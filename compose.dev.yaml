@@ -1,0 +1,46 @@
+# Development overlay:
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d
+# * exposes PostgreSQL / Redis on 127.0.0.1 for local debugging
+# * adds an isolated lab network with a local target (lab-target.bb.test / 10.89.250.10)
+#   that is safe to scan; workers join it. Add it to scope with `make lab-program`.
+services:
+  postgres:
+    ports: ["127.0.0.1:${POSTGRES_DEV_PORT:-15432}:5432"]
+
+  redis:
+    ports: ["127.0.0.1:${REDIS_DEV_PORT:-16379}:6379"]
+
+  lab-target:
+    image: caddy:${CADDY_VERSION:-2.11.4-alpine}
+    restart: unless-stopped
+    volumes:
+      - ./configs/lab/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./configs/lab/site:/srv:ro
+    networks:
+      lab:
+        ipv4_address: 10.89.250.10
+        aliases: [lab-target.bb.test]
+
+  httpx-worker:
+    networks: [backend, lab]
+  tlsx-worker:
+    networks: [backend, lab]
+  dns-worker:
+    networks: [backend, lab]
+  katana-worker:
+    networks: [backend, lab]
+
+  # Dev-only notification receiver: http://webhook-sink:8080/<anything>
+  webhook-sink:
+    image: python:${PYTHON_IMAGE_TAG:-3.12.14-slim-bookworm}
+    command: ["python", "-u", "/sink/webhook_sink.py"]
+    volumes: [./configs/lab/webhook_sink.py:/sink/webhook_sink.py:ro]
+    networks: [backend]
+
+networks:
+  lab:
+    name: bugbounty-lab
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.89.250.0/24

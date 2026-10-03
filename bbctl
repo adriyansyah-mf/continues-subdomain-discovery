@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Run bbctl inside the orchestrator container (no local Python needed).
+# A locally installed bbctl (pip install -e apps/orchestrator) works the same with BB_API_URL/BB_API_KEY set.
+set -euo pipefail
+cd "$(dirname "$0")"
+exec docker compose exec -T -e BB_API_URL=http://127.0.0.1:8000 -e COLUMNS="${COLUMNS:-$(tput cols 2>/dev/null || echo 160)}" orchestrator bbctl "$@"

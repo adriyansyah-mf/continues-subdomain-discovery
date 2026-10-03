@@ -1,0 +1,4 @@
+{"timestamp":"2026-10-02T03:22:51+07:00","port":"443","url":"https://api.example.com","input":"api.example.com","title":"API","scheme":"https","webserver":"nginx/1.24.0 (Ubuntu)","content_type":"text/html","method":"GET","host":"api.example.com","host_ip":"192.0.2.10","path":"/","time":"12.5ms","a":["192.0.2.10"],"tech":["Nginx:1.24.0","Ubuntu","HSTS"],"words":19,"lines":24,"status_code":200,"content_length":519,"failed":false,"cdn":true,"cdn_name":"cloudflare","cdn_type":"waf","favicon":"-1234567"}
+{"timestamp":"2026-10-02T03:22:52+07:00","port":"443","url":"https://evil.example.org","input":"api.example.com","status_code":302,"host_ip":"203.0.113.9","failed":false}
+this is not json
+["not", "an", "object"]

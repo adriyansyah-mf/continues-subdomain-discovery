@@ -1,0 +1,42 @@
+[project]
+name = "bb-orchestrator"
+version = "0.1.0"
+description = "Bug bounty asset intelligence platform: orchestrator, scope engine, workers shared library and bbctl CLI"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.118.0",
+    "uvicorn[standard]==0.37.0",
+    "pydantic==2.11.9",
+    "pydantic-settings==2.11.0",
+    "sqlalchemy==2.0.43",
+    "psycopg[binary]==3.2.10",
+    "alembic==1.16.5",
+    "redis==6.4.0",
+    "apscheduler==3.11.0",
+    "httpx==0.28.1",
+    "typer==0.19.2",
+    "rich==14.1.0",
+    "idna==3.10",
+    "tldextract==5.3.0",
+    "dnspython==2.8.0",
+    "websockets==15.0.1",
+    "prometheus-client==0.23.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.4.2",
+    "ruff==0.13.3",
+    "mypy==1.18.2",
+    "fakeredis==2.31.3",
+]
+
+[project.scripts]
+bbctl = "app.cli.main:app"
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

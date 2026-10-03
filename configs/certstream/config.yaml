@@ -1,0 +1,36 @@
+# Self-hosted certstream-server-go (compose profile "ct-server"). Reachable only on the
+# internal compose network; the platform's certstream-worker connects to ws://certstream-server:8080/
+webserver:
+  listen_addr: "0.0.0.0"
+  listen_port: 8080
+  real_ip: false
+  whitelist: []          # internal network only (no published port)
+  full_url: "/full-stream"
+  lite_url: "/"
+  domains_only_url: "/domains-only"
+  cert_path: ""
+  cert_key_path: ""
+  compression_enabled: false
+
+prometheus:
+  enabled: false
+  listen_addr: "0.0.0.0"
+  listen_port: 8080
+  metrics_url: "/metrics"
+  expose_system_metrics: false
+  real_ip: false
+  whitelist: []
+
+stream_processing: []
+
+general:
+  disable_default_logs: false
+  buffer_sizes:
+    websocket: 300
+    ctlog: 1000
+    dispatcher: 10000
+  drop_old_logs: true
+  recovery:
+    # Never backfill from index 0 (that is millions of certificates); only stream new entries.
+    enabled: false
+    ct_index_file: "/tmp/ct_index.json"

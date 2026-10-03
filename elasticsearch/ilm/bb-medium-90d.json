@@ -1,0 +1,24 @@
+{
+  "policy": {
+    "phases": {
+      "hot": {
+        "min_age": "0ms",
+        "actions": {
+          "set_priority": {
+            "priority": 100
+          }
+        }
+      },
+      "delete": {
+        "min_age": "90d",
+        "actions": {
+          "delete": {}
+        }
+      }
+    },
+    "_meta": {
+      "managed_by": "bugbounty-platform",
+      "retention_days": 90
+    }
+  }
+}

@@ -1,0 +1,7 @@
+api.http.host: 0.0.0.0
+api.http.port: 9600
+# Events rejected by Elasticsearch (400/404) go to the DLQ and are re-routed by the `dlq` pipeline.
+dead_letter_queue.enable: true
+dead_letter_queue.max_bytes: 512mb
+xpack.monitoring.enabled: false
+log.format: json

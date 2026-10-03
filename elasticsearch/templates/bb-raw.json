@@ -1,0 +1,26 @@
+{
+  "index_patterns": [
+    "bb-httpx-raw-*",
+    "bb-tlsx-raw-*",
+    "bb-katana-raw-*",
+    "bb-nuclei-raw-*",
+    "bb-bbot-raw-*",
+    "bb-uncover-raw-*"
+  ],
+  "priority": 300,
+  "composed_of": [
+    "bb-base"
+  ],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.lifecycle.name": "bb-raw-30d",
+      "index.mapping.total_fields.limit": 1000
+    }
+  },
+  "_meta": {
+    "managed_by": "bugbounty-platform",
+    "retention_policy": "bb-raw-30d"
+  }
+}

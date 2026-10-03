@@ -1,0 +1,5 @@
+{"timestamp":"2026-10-03T10:00:00Z","request":{"method":"GET","endpoint":"https://lab.example.com/"},"response":{"status_code":200}}
+{"timestamp":"2026-10-03T10:00:01Z","request":{"method":"GET","endpoint":"https://lab.example.com/app.js","source":"https://lab.example.com/","tag":"script","attribute":"src"},"response":{"status_code":200}}
+{"timestamp":"2026-10-03T10:00:02Z","request":{"method":"GET","endpoint":"https://lab.example.com/api/v2/items?page=2","source":"https://lab.example.com/app.js","tag":"js","attribute":"regex"},"response":{"status_code":200}}
+{"timestamp":"2026-10-03T10:00:03Z","request":{"method":"GET","endpoint":"https://lab.example.com/api/v2/items?page=3","source":"https://lab.example.com/app.js","tag":"js"},"response":{"status_code":200}}
+{"timestamp":"2026-10-03T10:00:04Z","request":{"method":"GET","endpoint":"https://evil.example.org/x","source":"https://lab.example.com/"},"response":{"status_code":200}}

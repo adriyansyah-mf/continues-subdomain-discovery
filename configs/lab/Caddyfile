@@ -1,0 +1,30 @@
+# Local, authorized lab target (compose.dev.yaml). Serves a tiny static site over HTTP and
+# HTTPS (Caddy internal CA) so httpx, tlsx and katana can be exercised safely.
+{
+	local_certs
+	skip_install_trust
+	auto_https disable_redirects
+	admin off
+}
+
+(site) {
+	log {
+		output stdout
+		format json
+	}
+	# To exercise the technology -> CPE -> NVD CVE correlation locally, temporarily replace this with
+	# a SIMULATED versioned banner, e.g. header Server "nginx/1.24.0" (docs/vulnerability-intel.md).
+	header Server "bb-lab"
+	root * /srv
+	try_files {path} {path}/index.html
+	file_server
+}
+
+:80 {
+	import site
+}
+
+https://10.89.250.10, https://lab-target.bb.test {
+	tls internal
+	import site
+}

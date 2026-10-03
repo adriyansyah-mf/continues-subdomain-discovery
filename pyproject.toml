@@ -1,0 +1,35 @@
+# Repository-level tooling configuration (ruff, mypy, pytest).
+# The installable Python package lives in apps/orchestrator.
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+ignore = [
+    "S101",  # assert in tests
+    "S603",  # subprocess without shell: scanners are invoked with argument lists by design
+    "B008",  # FastAPI Depends() defaults
+    "RUF012",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "workers"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+files = ["apps/orchestrator/app", "workers"]
+exclude = ["workers/cve-monitor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires the running docker compose stack"]
+addopts = "-ra"
