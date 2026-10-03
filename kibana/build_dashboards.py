@@ -143,6 +143,70 @@ def table(vid, title, dv, fields: list[str], query="", size=20, extra_metric: di
     )
 
 
+def timeseries(vid, title, dv, query="", split_field: str | None = None, split_size: int = 8):
+    """Line chart of document counts over @timestamp (optionally split into series by a field)."""
+    aggs = [
+        _count(),
+        {
+            "id": "2",
+            "enabled": True,
+            "type": "date_histogram",
+            "schema": "segment",
+            "params": {"field": "@timestamp", "interval": "auto", "min_doc_count": 1, "extended_bounds": {}},
+        },
+    ]
+    if split_field:
+        aggs.append(_terms("3", split_field, "group", split_size))
+    params = {
+        "type": "line",
+        "grid": {"categoryLines": False},
+        "categoryAxes": [
+            {
+                "id": "CategoryAxis-1",
+                "type": "category",
+                "position": "bottom",
+                "show": True,
+                "scale": {"type": "linear"},
+                "labels": {"show": True, "filter": True, "truncate": 100},
+                "title": {},
+            }
+        ],
+        "valueAxes": [
+            {
+                "id": "ValueAxis-1",
+                "name": "LeftAxis-1",
+                "type": "value",
+                "position": "left",
+                "show": True,
+                "scale": {"type": "linear", "mode": "normal"},
+                "labels": {"show": True, "rotate": 0, "filter": False, "truncate": 100},
+                "title": {"text": "Count"},
+            }
+        ],
+        "seriesParams": [
+            {
+                "show": True,
+                "type": "line",
+                "mode": "normal",
+                "data": {"label": "Count", "id": "1"},
+                "valueAxis": "ValueAxis-1",
+                "drawLinesBetweenPoints": True,
+                "lineWidth": 2,
+                "interpolate": "linear",
+                "showCircles": True,
+            }
+        ],
+        "addTooltip": True,
+        "addLegend": True,
+        "legendPosition": "right",
+        "times": [],
+        "addTimeMarker": False,
+        "labels": {},
+        "thresholdLines": {"show": False, "value": 10, "width": 1, "style": "full", "color": "#E7664C"},
+    }
+    return _vis(vid, title, dv, "line", aggs, params, query)
+
+
 def markdown(vid, title, text):
     return {
         "type": "visualization",
@@ -173,7 +237,7 @@ def dashboard(did: str, title: str, description: str, vis: list[dict], width: in
     x = y = 0
     for i, v in enumerate(vis):
         vtype = json.loads(v["attributes"]["visState"])["type"]
-        w = 48 if vtype in ("markdown",) else (24 if vtype == "table" else width)
+        w = 48 if vtype in ("markdown", "line") else (24 if vtype == "table" else width)
         h = 4 if vtype == "markdown" else (7 if vtype == "metric" else 13)
         if x + w > 48:
             x, y = 0, y + 13
@@ -254,6 +318,13 @@ DASHBOARDS = {
             pie("ov-asn", "ASN distribution", "bb-all", "asn.number"),
             pie("ov-cloud", "Cloud / provider (ipranges)", "bb-all", "cloud.provider"),
             table("ov-programs", "Observations by program", "bb-all", ["program.name", "bb.index"]),
+            timeseries(
+                "ov-ts-new",
+                "New assets over time",
+                "bb-changes",
+                "event.type:(NEW_DOMAIN or NEW_SUBDOMAIN or NEW_IP or NEW_URL or NEW_CERTIFICATE)",
+                split_field="event.type",
+            ),
         ],
     ),
     "certificate-monitoring": dashboard(
@@ -406,6 +477,13 @@ DASHBOARDS = {
         [
             metric("ch-total", "Changes", "bb-changes", "not event.type:SCOPE_BLOCKED", label="changes"),
             metric("ch-blocked", "Scope blocked", "bb-changes", "event.type:SCOPE_BLOCKED", label="blocked"),
+            timeseries(
+                "ch-ts",
+                "Changes over time by type",
+                "bb-changes",
+                "not event.type:SCOPE_BLOCKED",
+                split_field="event.type",
+            ),
             pie("ch-types", "Change types", "bb-changes", "event.type", size=25),
             pie("ch-programs", "Changes by program", "bb-changes", "program.name"),
             table(
@@ -471,6 +549,9 @@ DASHBOARDS = {
                 label="blocked",
             ),
             metric("op-dlq", "DLQ events", "bb-errors", "event.type:DLQ_EVENT", label="dlq"),
+            timeseries(
+                "op-ts-jobs", "Jobs over time by status", "bb-jobs", "event.category:job", split_field="job.status"
+            ),
             pie("op-status", "Jobs by status", "bb-jobs", "job.status", "event.category:job"),
             pie("op-scanner", "Jobs by scanner", "bb-jobs", "job.scanner", "event.category:job"),
             pie("op-block", "Block reasons", "bb-jobs", "job.block_reason", "job.block_reason:*"),
@@ -504,6 +585,7 @@ DASHBOARDS = {
             ),
             table("op-errors", "Errors by type / scanner", "bb-errors", ["error.type", "scan.tool"]),
             pie("op-notify-status", "Notifications by status", "bb-notifications", "notification.status"),
+            timeseries("op-ts-notify", "Notifications over time", "bb-notifications", split_field="notification.type"),
             table(
                 "op-notify-types",
                 "Notifications by type / channel",

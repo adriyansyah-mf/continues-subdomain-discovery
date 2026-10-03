@@ -228,7 +228,8 @@ make build && docker compose up -d   # after code changes
   `nuclei` jobs as not implemented. See `workers/nuclei/README.md`.
 * CPE mapping covers the curated products in `app/services/technology.py::VENDOR_PRODUCT`; others are only
   correlated when a source supplies a CPE (lower mapping confidence).
-* Lens-based dashboards with time series (current dashboards are aggregation-based panels).
+* Dashboards use aggregation-based panels, including time-series line charts (new assets, changes, jobs,
+  notifications); Lens versions are optional polish.
 * **Scaling (phase 6) remaining:**
   * automatic replica management (the platform exposes the signals and enforces cluster-wide limits);
   * request-rate budgets per program/host (today: per-job tool rate limit × per-host concurrency).
