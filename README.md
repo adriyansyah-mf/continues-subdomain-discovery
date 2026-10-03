@@ -11,6 +11,8 @@ Scanners are interchangeable workers behind a queue.
 > worker liveness checks, extra metrics. **Not implemented yet:** the nuclei worker (phase 4); the API
 > refuses it with an explicit "not implemented" error rather than faking results. See [Roadmap](#roadmap--known-limitations).
 
+> Full status, test results and known limitations: [docs/final-report.md](docs/final-report.md).
+
 ## 1. What it does
 
 * Manages bug bounty **programs** and their **scope database (CDB)**: include/exclude rules for
