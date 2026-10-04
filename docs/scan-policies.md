@@ -10,7 +10,9 @@ Per scanner: `enabled`, `rate_limit` (req/s), `concurrency`, `timeout`, `retries
 * tlsx: `ports`
 * dns: `record_types`, `resolvers`
 * katana: `depth`, `js_crawl`, `jsluice`, `max_urls`, `known_files`
-* nuclei: `severity`, `tags`, `exclude_tags`, `templates` (ids/relative paths, no `..`)
+* nuclei: `severity`, `tags`, `exclude_tags`, `templates` (ids/relative paths, no `..`). `tags` may not
+  contain `dos`, `bruteforce` or `default-login`; the worker always excludes them. A selection whose
+  template count / `rate_limit` exceeds 80% of the job deadline is blocked (`RESOURCE_LIMIT_EXCEEDED`).
 * mapcidr: `skip_base_broadcast`, `followup_scanners`
 * uncover: `engines`, `limit`, `followup_scanners`
 * bbot: `preset` (subdomain-enum), `passive_only` (default true), `exclude_modules`
@@ -29,7 +31,7 @@ Every policy is also checked against deployment caps (`HTTPX_RATE_LIMIT`, `MAX_C
 | `conservative-web` | dns, httpx (20 rps), tlsx, katana depth 3 |
 | `recon` | dns, httpx, tlsx, mapcidr (→ tlsx), uncover (→ tlsx, httpx), katana depth 2, passive BBOT |
 | `crawl` | katana |
-| `vulnerability` | nuclei medium/high/critical, intrusive tags excluded, daily bucket |
+| `vulnerability` | nuclei baseline: `exposure,misconfig,takeover`, medium/high/critical, intrusive tags excluded, 10 req/s, 900 s, daily bucket |
 | `full` | all of the above |
 
 Seeding only creates missing policies; it never overwrites an existing one (operators may have

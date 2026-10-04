@@ -18,7 +18,7 @@ can be replaced without touching the rest of the system. See [architecture.md](a
 ```
 apps/orchestrator/app/   api/ cli/ models/ queue/ schemas/ scheduler/ scope/ services/{notify,vuln}/ workers/ utils/
 workers/                 common/ httpx/ tlsx/ dns/ mapcidr/ katana/ uncover/ bbot/ certstream/ cve_monitor/ notifier/
-                         nuclei/ (stub)  ipranges/ (README: runs in the scheduler)
+                         nuclei/         ipranges/ (README: runs in the scheduler)
 elasticsearch/           ilm/ (4 policies)  mappings/bb-base.json  templates/ (21)
 logstash/                pipelines.yml  pipelines/ (11 streams + dlq)  config/
 kibana/                  build_dashboards.py  dashboards/ (7)  data-views/
@@ -71,7 +71,9 @@ mappings). Retention is set by 4 ILM policies: 30, 60, 90 and 730 days.
 Indices populated in the dev stack: assets, audit, bbot(+raw), certstream, changes, cve, dns,
 errors, http, httpx-raw, ips, jobs, katana(+raw), kev (1,733), notifications, tls, tlsx-raw, urls.
 
-Reserved but empty: domains, scans, nuclei(+raw), uncover (populated once an uncover engine
+nuclei(+raw) is populated by the lab end-to-end check (git-config bait finding).
+
+Reserved but empty: domains, scans, uncover (populated once an uncover engine
 returns results). See [ingestion.md](ingestion.md).
 
 ## 6. Scope enforcement flow
@@ -171,8 +173,8 @@ workers. OpenAPI documentation is at `/docs`.
 
 ## 16. Test results
 
-- `make lint`: ruff and mypy are clean (110 source files).
-- `make test`: 197 unit tests pass. They cover scope bypass and malformed input, normalization,
+- `make lint`: ruff and mypy are clean (113 source files).
+- `make test`: 218 unit tests pass. They cover scope bypass and malformed input, normalization,
   idempotency, policies, the queue and limits, parsers on recorded output, change detection,
   notifications, KEV/EPSS/NVD/CPE and ASN.
 - `make test-integration`: 16 tests pass against the live stack. They cover auth/RBAC, scope
@@ -185,11 +187,16 @@ workers. OpenAPI documentation is at `/docs`.
   - fair share between programs;
   - DLQ replay;
   - notifications with HMAC signatures;
-  - katana never requesting an excluded path (confirmed in the lab target's access log).
+  - katana never requesting an excluded path (confirmed in the lab target's access log);
+  - nuclei end to end on the lab target: a host with a URL exclusion is `BLOCKED / EXCLUDED`; the
+    whole bundle is `BLOCKED / RESOURCE_LIMIT_EXCEEDED` up front; the `vulnerability` baseline
+    (1,149 templates, 330 s) finds the deliberate `.git/config` bait → `bb-nuclei`,
+    `bb-nuclei-raw`, `NEW_FINDING` in `bb-changes`, with program/scope/template-version provenance.
 
 ## 17. Known limitations
 
-- No nuclei worker (see section 9).
+- katana's known-files fetch and nuclei's bare-host scheme probe ignore custom headers (a few
+  requests per job without `BB_USER_AGENT` / `BB_REQUEST_HEADER`); see the README roadmap.
 - No replica-count recommendation or automatic scaling. The signals are exposed instead
   (`/workers` pools, `scanner_queue_wait_seconds`, `worker_busy`).
 - Request rates are limited per job (tool rate limit × per-host concurrency). There are no
@@ -203,7 +210,7 @@ workers. OpenAPI documentation is at `/docs`.
 
 ## 18. Remaining TODOs
 
-- nuclei adapter, following the requirements in `workers/nuclei/README.md`.
+- Optional: a technology-specific nuclei policy driven by httpx fingerprints.
 - Optional: Lens dashboards, request-rate budgets, an external autoscaler driven by the exposed
   metrics, and Vault integration for secrets.
 

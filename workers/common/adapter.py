@@ -64,6 +64,10 @@ class NonRetryableError(RuntimeError):
     """Configuration/permanent errors (e.g. missing API key): fail immediately, do not retry."""
 
 
+class ResourceLimitError(RuntimeError):
+    """The job cannot run within the configured resource limits: BLOCKED, never retried."""
+
+
 class ScannerAdapter(abc.ABC):
     name: str  # scanner name == registry key
     queue: str

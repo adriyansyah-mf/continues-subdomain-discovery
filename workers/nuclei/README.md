@@ -27,6 +27,19 @@ panel are pre-provisioned.
   fields only — no free-form flags through the API.
 * **Layer 3 re-validation.** every finding's `matched-at` URL is re-checked against fresh scope
   before it is stored; blocked findings are dropped and reported as `SCOPE_BLOCKED`.
+* **Forbidden tags.** `dos`, `bruteforce` and `default-login` (`FORBIDDEN_NUCLEI_TAGS`) are always
+  appended to `-etags` and a policy cannot select them in `tags`. nuclei applies `-etags` over every
+  selection style (`-t` file, `-id`, `-tags`), so an allow-listed template carrying one of these
+  tags is still skipped.
+* **Curated by default, feasibility checked.** The `vulnerability` and `full` policies select
+  `exposure,misconfig,takeover` (about 1,150 medium+ templates), not the whole bundle (about
+  6,900). Before scanning, the worker counts the selection locally (`nuclei -tl`, no traffic).
+  Every template sends at least one request, so `templates / rate_limit` is a lower bound on the
+  run time; if it exceeds 80% of the job deadline the job is `BLOCKED / RESOURCE_LIMIT_EXCEEDED`
+  instead of timing out and retrying.
+* **Honest client identity.** Requests carry the fixed `BB_USER_AGENT` (nuclei would otherwise
+  rotate random browser User-Agents) and the optional `BB_REQUEST_HEADER`. Exception: nuclei's
+  initial scheme probe of a bare host (one `HEAD /`) ignores custom headers.
 * **No response bodies in events.** `-or -ot` omit request/response pairs and the encoded
   template from the JSONL; the curl command and extractor results are kept as evidence.
 * Like katana, nuclei resolves DNS itself, so rebinding protection relies on the runner's
@@ -48,9 +61,8 @@ Bump `NUCLEI_VERSION`, `NUCLEI_TEMPLATES_VERSION` and `NUCLEI_TEMPLATES_COMMIT` 
 `.env.example`, rebuild the image, and run the worker tests. Never point the worker at a
 mutable templates directory.
 
-## Running Nuclei externally today
+## Running Nuclei externally
 
-Until an adapter exists, external Nuclei integrates cleanly without the platform launching it:
-`bbctl program targets <program>` gives a scope-verified target list, and
-`scripts/nuclei-to-platform.sh` ingests findings into `bb-nuclei-*` with the platform schema so the
-dashboards populate. See [docs/nuclei-external.md](../../docs/nuclei-external.md).
+External runs remain possible: `bbctl program targets <program>` gives a scope-verified target
+list, and `scripts/nuclei-to-platform.sh` ingests findings into `bb-nuclei-*` with the platform
+schema. See [docs/nuclei-external.md](../../docs/nuclei-external.md).

@@ -108,9 +108,12 @@ class Settings(BaseSettings):
     # Scanning hosts that resolve to private/loopback/link-local space is refused
     # unless the IP itself is explicitly in scope (protects the platform's own network).
     allow_private_targets: bool = Field(default=False, alias="ALLOW_PRIVATE_TARGETS")
-    # Optional identification header sent by active HTTP scanners (httpx, katana), e.g.
+    # Optional identification header sent by active HTTP scanners (httpx, katana, nuclei), e.g.
     # "X-Bug-Bounty: yourhandle" - many programs require it. Empty = not sent.
     request_header: str = Field(default="", alias="BB_REQUEST_HEADER")
+    # Fixed, honest User-Agent for the same scanners. httpx/nuclei otherwise rotate random browser
+    # User-Agents, which disguises the scanner; the platform never does that.
+    user_agent: str = Field(default="bugbounty-platform/0.1.0 (authorized security testing)", alias="BB_USER_AGENT")
 
     # --- queue / retry ----------------------------------------------------
     job_max_retries: int = Field(default=3, alias="JOB_MAX_RETRIES")

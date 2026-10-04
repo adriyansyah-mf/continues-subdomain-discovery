@@ -4,7 +4,12 @@ Safety: templates are a release pinned in the image (``-duc``, read-only image
 layer, release marker cross-checked against ``NUCLEI_TEMPLATES_VERSION``) and are
 never fetched at runtime; out-of-band testing is disabled (``-ni``, which also
 excludes OAST templates); intrusive tags are excluded by default (policy);
-severity/tags/template ids come from the validated policy only. nuclei cannot
+severity/tags/template ids come from the validated policy only, and destructive /
+credential-guessing tags (``FORBIDDEN_NUCLEI_TAGS``) are always excluded — ``-etags``
+overrides every selection style (``-t`` file, ``-id``, ``-tags``). Before scanning, the
+selection is counted locally (``-tl``, no traffic) and a job that cannot finish within its
+deadline at the policy rate limit is BLOCKED (``RESOURCE_LIMIT_EXCEEDED``) instead of
+running into the timeout and retrying. nuclei cannot
 restrict its requests to specific URL paths, so a host with any URL exclusion is
 refused outright instead of risking requests to excluded paths. Every matched URL
 is re-checked against scope before it is stored (layer 3).
@@ -28,17 +33,25 @@ from sqlalchemy.orm import Session
 
 from app.models import Program
 from app.models.enums import BlockReason, LifecycleStage
+from app.schemas.policy import FORBIDDEN_NUCLEI_TAGS
 from app.scope.normalize import InvalidTarget, NormalizedURL, normalize_url
 from app.services.assets import confidence_for, mark_scanned, swap_state, upsert_asset
 from app.services.changes import Change, change_event
 from app.services.events import build_event
 from app.services.scans import scope_blocked_event
 from app.services.vuln.correlate import record_correlation
-from workers.common.adapter import JobContext, NonRetryableError, RawOutput, ScannerAdapter, ScanOutcome
+from workers.common.adapter import (
+    JobContext,
+    NonRetryableError,
+    RawOutput,
+    ResourceLimitError,
+    ScannerAdapter,
+    ScanOutcome,
+)
 from workers.common.event import error_event, raw_event, snapshot_event
 from workers.common.process import ToolError, run_tool
 from workers.common.scope_guard import ScopeBlockedError
-from workers.common.tooling import binary_version, identification_header, parse_jsonl
+from workers.common.tooling import binary_version, parse_jsonl, request_headers
 
 BINARY = os.environ.get("NUCLEI_BINARY", "nuclei")
 TEMPLATES_DIR = os.environ.get("NUCLEI_TEMPLATES_DIR", "/opt/pd/nuclei-templates")
@@ -46,6 +59,9 @@ RELEASE_FILE = os.environ.get("NUCLEI_TEMPLATES_RELEASE_FILE", "/opt/pd/nuclei-t
 MAX_FINDINGS_IN_STATE = 2000
 MAX_CVE_CORRELATIONS = 100  # one template family can reference dozens of CVEs
 MAX_SCOPE_BLOCKED_EVENTS = 20
+# Share of the job deadline the request lower bound (templates / rate limit) may use; the
+# rest covers per-request latency, multi-request templates and nuclei start-up.
+FEASIBLE_DEADLINE_SHARE = 0.8
 
 
 def target_host(ctx: JobContext) -> str:
@@ -98,6 +114,42 @@ def template_args(settings: Any, templates_dir: str) -> list[str]:
     return ["-t", templates_dir] + [x for ref in settings.templates for x in ("-id", ref)]
 
 
+def exclude_tags(settings: Any) -> list[str]:
+    """Policy exclusions plus the forbidden tags, which a policy cannot remove."""
+    return list(dict.fromkeys([*settings.exclude_tags, *FORBIDDEN_NUCLEI_TAGS]))
+
+
+def selection_args(settings: Any, templates_dir: str) -> list[str]:
+    """Template selection shared by the scan and the pre-flight count, so both see the same set."""
+    argv = [*template_args(settings, templates_dir), "-s", ",".join(settings.severity)]
+    argv += ["-etags", ",".join(exclude_tags(settings))]
+    if settings.tags:
+        argv += ["-tags", ",".join(settings.tags)]
+    return argv
+
+
+def count_templates(settings: Any, binary: str = BINARY, templates_dir: str = TEMPLATES_DIR) -> int:
+    """Number of templates the policy selects (local listing, no traffic)."""
+    result = run_tool([binary, "-duc", "-silent", "-nc", "-tl", *selection_args(settings, templates_dir)], timeout=120)
+    if not result.ok:
+        raise ToolError(f"nuclei template listing exited {result.returncode}: {result.stderr_tail[-500:]}")
+    return sum(1 for ln in result.stdout_lines if ln.strip().endswith((".yaml", ".yml")))
+
+
+def check_feasible(templates: int, rate_limit: int, deadline_seconds: float) -> None:
+    """Every selected template sends at least one request, so templates / rate is a lower bound."""
+    if templates == 0:
+        raise NonRetryableError("nuclei policy selects no templates (check severity/tags/templates)")
+    needed = templates / rate_limit
+    budget = deadline_seconds * FEASIBLE_DEADLINE_SHARE
+    if needed > budget:
+        raise ResourceLimitError(
+            f"policy selects {templates} nuclei templates: at {rate_limit} req/s that needs at least "
+            f"{needed:.0f}s, more than {budget:.0f}s of the {deadline_seconds}s deadline; narrow the "
+            "selection (tags/templates/severity)"
+        )
+
+
 def build_argv(ctx: JobContext, binary: str = BINARY, templates_dir: str = TEMPLATES_DIR) -> list[str]:
     enforce_exclusions(ctx)
     s: Any = ctx.settings
@@ -112,9 +164,7 @@ def build_argv(ctx: JobContext, binary: str = BINARY, templates_dir: str = TEMPL
         "-ni",  # disable out-of-bound (interactsh) testing; OAST templates are excluded
         "-or",  # omit request/response pairs from the output
         "-ot",  # omit the encoded template from the output
-        *template_args(s, templates_dir),
-        "-s",
-        ",".join(s.severity),
+        *selection_args(s, templates_dir),
         "-rl",
         str(s.rate_limit),
         "-c",
@@ -124,12 +174,7 @@ def build_argv(ctx: JobContext, binary: str = BINARY, templates_dir: str = TEMPL
         "-retries",
         str(s.retries),
     ]
-    if s.exclude_tags:
-        argv += ["-etags", ",".join(s.exclude_tags)]
-    if s.tags:
-        argv += ["-tags", ",".join(s.tags)]
-    header = identification_header()
-    if header:
+    for header in request_headers():
         argv += ["-H", header]
     return argv
 
@@ -224,15 +269,18 @@ class NucleiAdapter(ScannerAdapter):
         templates_dir = TEMPLATES_DIR
         self._check_templates(templates_dir)
         release = templates_release()
+        argv = build_argv(ctx, self.binary, templates_dir)  # scope/exclusion refusal before any work
+        selected = count_templates(ctx.settings, self.binary, templates_dir)
+        check_feasible(selected, ctx.settings.rate_limit, ctx.deadline_seconds)
         result = run_tool(
-            build_argv(ctx, self.binary, templates_dir),
+            argv,
             timeout=ctx.deadline_seconds + 30,
             is_cancelled=ctx.is_cancelled,
         )
         if not result.ok:
             raise ToolError(f"nuclei exited {result.returncode}: {result.stderr_tail[-1000:]}")
         raw = parse_jsonl(result.stdout_lines)
-        raw.meta = {"duration": round(result.duration, 3), "templates_release": release}
+        raw.meta = {"duration": round(result.duration, 3), "templates_release": release, "templates_selected": selected}
         return raw
 
     def process(self, session: Session, ctx: JobContext, raw: RawOutput) -> ScanOutcome:

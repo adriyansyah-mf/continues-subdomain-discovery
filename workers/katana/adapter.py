@@ -31,7 +31,7 @@ from app.services.scans import scope_blocked_event
 from workers.common.adapter import JobContext, RawOutput, ScannerAdapter, ScanOutcome
 from workers.common.event import error_event, raw_event, snapshot_event
 from workers.common.process import ToolError, run_tool
-from workers.common.tooling import binary_version, identification_header, parse_jsonl
+from workers.common.tooling import binary_version, parse_jsonl, request_headers
 
 BINARY = os.environ.get("KATANA_BINARY", "katana")
 MAX_ENDPOINTS_IN_STATE = 5000
@@ -98,8 +98,7 @@ def build_argv(ctx: JobContext, binary: str = BINARY) -> list[str]:
         argv += ["-kf", "all" if known == {"robotstxt", "sitemapxml"} else known.pop()]
     if not s.follow_redirects:
         argv.append("-dr")
-    header = identification_header()
-    if header:
+    for header in request_headers():
         argv += ["-H", header]
     for rx in exclusion_regexes(ctx, url):
         argv += ["-cos", rx]

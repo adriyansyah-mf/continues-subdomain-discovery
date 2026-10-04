@@ -1,9 +1,9 @@
 # Running Nuclei externally, reporting to the platform
 
-The platform **does not launch Nuclei**. Nuclei sends active traffic (it fires vulnerability
-templates at hosts), so you run it yourself, only against assets you are authorised to scan under a
-program you participate in. The platform gives you a scope-verified target list and ingests the
-findings with its own schema, so they appear in Kibana next to the CVE/KEV data.
+The platform has a built-in nuclei worker (`workers/nuclei/`, policy `vulnerability`). This page
+covers the alternative: running Nuclei yourself, only against assets you are authorised to scan
+under a program you participate in. The platform gives you a scope-verified target list and ingests
+the findings with its own schema, so they appear in Kibana next to the CVE/KEV data.
 
 ## 1. Get an in-scope target list
 
@@ -60,7 +60,9 @@ elasticsearch:
   index-name: "bb-nuclei-manual"
 ```
 
-## Why there is no built-in Nuclei worker
+## Built-in worker vs. external runs
 
-A worker that runs Nuclei automatically is not shipped (see `workers/nuclei/README.md`). The
-ingestion side is complete, so external Nuclei integrates cleanly through either path above.
+Prefer the built-in worker: it re-checks scope per job and per finding, refuses hosts with URL
+exclusions, pins templates, always excludes `dos`/`bruteforce`/`default-login`, and records job
+provenance. External runs bypass those worker-side checks, so the safety of an external run is
+your responsibility.

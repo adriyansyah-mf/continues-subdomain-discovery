@@ -150,7 +150,7 @@ def test_nuclei_argv_pinned_and_safe(monkeypatch):
         assert flag in argv
     assert argv[argv.index("-t") + 1] == "/opt/pd/nuclei-templates"
     assert argv[argv.index("-s") + 1] == "medium,high,critical"
-    assert argv[argv.index("-etags") + 1] == "dos,fuzz,intrusive,bruteforce"
+    assert argv[argv.index("-etags") + 1] == "dos,fuzz,intrusive,bruteforce,default-login"
     assert argv[argv.index("-rl") + 1] == "5" and argv[argv.index("-c") + 1] == "2"
     assert "-headless" not in argv and "-tags" not in argv
 
@@ -166,7 +166,7 @@ def test_nuclei_argv_url_target_and_allowlist():
     # id entries resolve within the pinned bundle (-t + -id restrictions)
     assert argv[argv.index("-t") + 1] == "/tpl"
     assert [argv[i + 1] for i, a in enumerate(argv) if a == "-id"] == ["tech-detect", "cve-2023-44487"]
-    assert argv[argv.index("-tags") + 1] == "cve" and argv[argv.index("-etags") + 1] == "dos"
+    assert argv[argv.index("-tags") + 1] == "cve" and argv[argv.index("-etags") + 1] == "dos,bruteforce,default-login"
 
     c2 = ctx(
         "https://lab.example.com/app",
@@ -232,3 +232,106 @@ def test_nuclei_templates_release_pin_checked(tmp_path, monkeypatch):
     monkeypatch.setenv("NUCLEI_TEMPLATES_VERSION", "9.9.9")
     with pytest.raises(NonRetryableError):
         nuclei.templates_release()
+
+
+def test_nuclei_forbidden_tags_always_excluded():
+    c = ctx(
+        "lab.example.com",
+        NucleiSettings(enabled=True, exclude_tags=[], templates=["http/default-logins/x.yaml"]),
+        ("domain", "lab.example.com", "include"),
+    )
+    argv = nuclei.build_argv(c, "nuclei", "/tpl")
+    # -etags overrides explicit -t/-id selection in nuclei, so a policy cannot opt back in
+    assert argv[argv.index("-etags") + 1].split(",") == ["dos", "bruteforce", "default-login"]
+
+
+@pytest.mark.parametrize("tag", ["dos", "bruteforce", "default-login"])
+def test_nuclei_policy_cannot_select_forbidden_tags(tag):
+    with pytest.raises(ValueError, match="never allowed"):
+        NucleiSettings(enabled=True, tags=["exposure", tag])
+
+
+def test_nuclei_default_policies_use_curated_selection():
+    from app.schemas.policy import BASELINE_NUCLEI_TAGS, DEFAULT_POLICIES, PolicyConfig
+
+    for name in ("vulnerability", "full"):
+        cfg = PolicyConfig.model_validate(DEFAULT_POLICIES[name][1])
+        assert cfg.nuclei.enabled and cfg.nuclei.tags == list(BASELINE_NUCLEI_TAGS), name
+
+
+def test_nuclei_feasibility_check():
+    from workers.common.adapter import NonRetryableError, ResourceLimitError
+
+    nuclei.check_feasible(1128, 10, 900)  # ~113s lower bound, fits in 720s
+    with pytest.raises(ResourceLimitError, match="7197 nuclei templates"):
+        nuclei.check_feasible(7197, 5, 600)  # the whole medium+ bundle at 5 req/s
+    with pytest.raises(NonRetryableError):
+        nuclei.check_feasible(0, 10, 900)
+
+
+def test_nuclei_count_templates_uses_same_selection(monkeypatch):
+    from workers.common.process import ToolResult
+
+    seen = {}
+
+    def fake_run(argv, timeout, **kw):
+        seen["argv"] = argv
+        out = ["Listing available nuclei templates", "http/a.yaml", "dns/b.yml", ""]
+        return ToolResult(argv=argv, returncode=0, stdout_lines=out, stderr_tail="", duration=0.1, truncated=False)
+
+    monkeypatch.setattr(nuclei, "run_tool", fake_run)
+    settings = NucleiSettings(enabled=True, tags=["exposure"])
+    assert nuclei.count_templates(settings, "nuclei", "/tpl") == 2
+    assert "-tl" in seen["argv"] and "-u" not in seen["argv"]  # listing only, no target
+    assert seen["argv"][seen["argv"].index("-tl") + 1 :] == nuclei.selection_args(settings, "/tpl")
+
+
+def test_nuclei_execute_blocks_infeasible_selection(tmp_path, monkeypatch):
+    from workers.common.adapter import ResourceLimitError
+
+    (tmp_path / "t.yaml").write_text("id: t\n")
+    monkeypatch.setattr(nuclei, "TEMPLATES_DIR", str(tmp_path))
+    monkeypatch.setattr(nuclei, "count_templates", lambda *a, **k: 5000)
+    monkeypatch.setattr(nuclei, "run_tool", lambda *a, **k: pytest.fail("scan must not start"))
+    adapter = nuclei.NucleiAdapter.__new__(nuclei.NucleiAdapter)
+    adapter.binary = "nuclei"
+    c = ctx("lab.example.com", NucleiSettings(enabled=True, rate_limit=5), ("domain", "lab.example.com", "include"))
+    with pytest.raises(ResourceLimitError):
+        adapter.execute(c)
+
+
+def test_scanners_send_fixed_user_agent_and_identification(monkeypatch):
+    from app.config import get_settings
+    from app.schemas.policy import HttpxSettings
+    from workers.httpx.adapter import build_argv as httpx_argv
+
+    monkeypatch.setenv("BB_REQUEST_HEADER", "X-Bug-Bounty: someone")
+    monkeypatch.setenv("BB_USER_AGENT", "bb-test/1.0 (authorized)")
+    get_settings.cache_clear()
+    try:
+        rules = (("domain", "lab.example.com", "include"),)
+        argvs = {
+            "nuclei": nuclei.build_argv(ctx("lab.example.com", NucleiSettings(enabled=True), *rules), "nuclei", "/t"),
+            "katana": katana.build_argv(ctx("lab.example.com", KatanaSettings(enabled=True), *rules), "katana"),
+            "httpx": httpx_argv(ctx("lab.example.com", HttpxSettings(enabled=True), *rules), "httpx"),
+        }
+        for name, argv in argvs.items():
+            headers = [argv[i + 1] for i, a in enumerate(argv) if a == "-H"]
+            assert headers == ["User-Agent: bb-test/1.0 (authorized)", "X-Bug-Bounty: someone"], name
+            assert "-random-agent" not in argv, name
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("ua", ["", "bad\r\nX-Injected: 1", "x" * 300])
+def test_user_agent_validation(monkeypatch, ua):
+    from app.config import get_settings
+    from workers.common.tooling import request_headers
+
+    monkeypatch.setenv("BB_USER_AGENT", ua)
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(ValueError):
+            request_headers()
+    finally:
+        get_settings.cache_clear()

@@ -39,7 +39,7 @@ from app.services.controls import check_operational_guards
 from app.services.events import EventBacklogFullError, EventContext, EventEmitter
 from app.services.scans import dispatch_pending, job_event, scope_blocked_event
 from app.utils.time import utcnow
-from workers.common.adapter import JobContext, NonRetryableError, ScannerAdapter
+from workers.common.adapter import JobContext, NonRetryableError, ResourceLimitError, ScannerAdapter
 from workers.common.event import error_event
 from workers.common.logging import configure_logging
 from workers.common.process import ToolCancelledError
@@ -342,6 +342,13 @@ class WorkerRunner:
             if job_row is not None:
                 self._emit_job(job_row, program_name)
             log.warning("job blocked during execution", extra={**extra, "reason": exc.detail})
+        except ResourceLimitError as exc:
+            job_row = self._finish(
+                job_id, JobStatus.BLOCKED, block_reason=BlockReason.RESOURCE_LIMIT_EXCEEDED.value, error=str(exc)
+            )
+            if job_row is not None:
+                self._emit_job(job_row, program_name)
+            log.warning("job blocked by resource limits", extra={**extra, "reason": str(exc)})
         except ToolCancelledError:
             log.info("job cancelled during execution", extra=extra)
         except _Requeue as exc:

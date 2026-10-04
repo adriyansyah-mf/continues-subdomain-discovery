@@ -128,12 +128,17 @@ Severity = Literal["info", "low", "medium", "high", "critical"]
 
 
 _DEFAULT_SEVERITY: tuple[Severity, ...] = ("medium", "high", "critical")
+# Destructive and credential-guessing templates are never allowed: the worker always passes
+# these to -etags (which overrides -tags/-id/-t selection) and policies cannot select them.
+FORBIDDEN_NUCLEI_TAGS: tuple[str, ...] = ("dos", "bruteforce", "default-login")
+# Baseline selection: the whole bundle is never run by default (thousands of templates).
+BASELINE_NUCLEI_TAGS: tuple[str, ...] = ("exposure", "misconfig", "takeover")
 
 
 class NucleiSettings(ScannerSettings):
     severity: list[Severity] = Field(default_factory=lambda: list(_DEFAULT_SEVERITY))
     tags: list[str] = Field(default_factory=list)
-    exclude_tags: list[str] = Field(default_factory=lambda: ["dos", "fuzz", "intrusive", "bruteforce"])
+    exclude_tags: list[str] = Field(default_factory=lambda: ["dos", "fuzz", "intrusive", "bruteforce", "default-login"])
     templates: list[str] = Field(default_factory=list, description="template ids / relative paths")
 
     @field_validator("tags", "exclude_tags")
@@ -142,6 +147,14 @@ class NucleiSettings(ScannerSettings):
         for t in v:
             if not _TAG_RE.match(t):
                 raise ValueError(f"invalid tag {t!r}")
+        return v
+
+    @field_validator("tags")
+    @classmethod
+    def _no_forbidden_tags(cls, v: list[str]) -> list[str]:
+        bad = sorted(set(v) & set(FORBIDDEN_NUCLEI_TAGS))
+        if bad:
+            raise ValueError(f"tags {bad} are never allowed (destructive or credential attacks)")
         return v
 
     @field_validator("templates")
@@ -208,6 +221,9 @@ def _on(**kw) -> dict:
     return {"enabled": True, **kw}
 
 
+_BASELINE = list(BASELINE_NUCLEI_TAGS)
+
+
 # Seeded on first start; editable afterwards through the API.
 DEFAULT_POLICIES: dict[str, tuple[str, dict]] = {
     "passive": ("DNS resolution only. No traffic is sent to targets.", {"dns": _on()}),
@@ -240,8 +256,8 @@ DEFAULT_POLICIES: dict[str, tuple[str, dict]] = {
     ),
     "crawl": ("Crawling of approved URLs.", {"katana": _on(rate_limit=5, concurrency=2, depth=3)}),
     "vulnerability": (
-        "Nuclei medium/high/critical with intrusive tags excluded.",
-        {"nuclei": _on(rate_limit=5, concurrency=2, time_bucket_seconds=86400)},
+        "Nuclei baseline: exposure/misconfig/takeover templates, medium/high/critical, intrusive tags excluded.",
+        {"nuclei": _on(rate_limit=10, concurrency=2, max_duration=900, time_bucket_seconds=86400, tags=_BASELINE)},
     ),
     "full": (
         "All implemented scanners with conservative limits.",
@@ -250,7 +266,7 @@ DEFAULT_POLICIES: dict[str, tuple[str, dict]] = {
             "httpx": _on(rate_limit=20, concurrency=4),
             "tlsx": _on(rate_limit=10, concurrency=2),
             "katana": _on(rate_limit=5, concurrency=2, depth=3),
-            "nuclei": _on(rate_limit=5, concurrency=2, time_bucket_seconds=86400),
+            "nuclei": _on(rate_limit=10, concurrency=2, max_duration=900, time_bucket_seconds=86400, tags=_BASELINE),
         },
     ),
 }

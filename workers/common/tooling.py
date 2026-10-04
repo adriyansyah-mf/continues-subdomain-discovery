@@ -59,3 +59,21 @@ def identification_header() -> str | None:
     if not _HEADER_RE.match(value):
         raise ValueError("BB_REQUEST_HEADER must look like 'X-Bug-Bounty: handle' (printable ASCII, one line)")
     return value
+
+
+_UA_RE = re.compile(r"^[\x21-\x7e][\x20-\x7e]{0,255}$")
+
+
+def request_headers() -> list[str]:
+    """Headers every active HTTP scanner sends: a fixed User-Agent (no random browser UAs) plus
+    the optional identification header. Both are validated (no CR/LF injection)."""
+    from app.config import get_settings
+
+    ua = get_settings().user_agent.strip()
+    if not _UA_RE.match(ua):
+        raise ValueError("BB_USER_AGENT must be one line of printable ASCII (1-256 chars)")
+    headers = [f"User-Agent: {ua}"]
+    ident = identification_header()
+    if ident:
+        headers.append(ident)
+    return headers

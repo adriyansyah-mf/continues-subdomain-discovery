@@ -15,6 +15,15 @@
 	# To exercise the technology -> CPE -> NVD CVE correlation locally, temporarily replace this with
 	# a SIMULATED versioned banner, e.g. header Server "nginx/1.24.0" (docs/vulnerability-intel.md).
 	header Server "bb-lab"
+	# DELIBERATE bait (fake, no credentials): the nuclei baseline policy reports it via the git-config
+	# exposure template, so the finding/change pipeline can be verified end to end. (Served from here
+	# because git refuses to track a path containing a ".git" directory.)
+	respond /.git/config `[core]
+	repositoryformatversion = 0
+	bare = false
+[remote "origin"]
+	url = https://example.invalid/bb-lab/site.git
+` 200
 	root * /srv
 	try_files {path} {path}/index.html
 	file_server

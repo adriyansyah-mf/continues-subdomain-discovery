@@ -4,12 +4,12 @@ Scope-enforced, continuous attack-surface monitoring for **authorized** bug boun
 PostgreSQL holds the platform state, Elasticsearch holds observations, and Kibana is the UI.
 Scanners are interchangeable workers behind a queue.
 
-> Status: **Phases 1–3 complete**: foundation; discovery (bounty-targets importer, CertStream, httpx,
+> Status: **Phases 1–6 implemented**: foundation; discovery (bounty-targets importer, CertStream, httpx,
 > tlsx, DNS, normalization, dedup, change detection); recon (mapcidr, katana, uncover, BBOT, provider
-> IP-range enrichment); phase 4 vulnerability intelligence (CISA KEV, EPSS, NVD CPE→CVE correlation).
+> IP-range enrichment); phase 4 vulnerability (nuclei worker, CISA KEV, EPSS, NVD CPE→CVE correlation).
 > Phase 5 (operations): notifications, DLQ replay/purge, maintenance-window CLI, backups, log rotation,
-> worker liveness checks, extra metrics. **Not implemented yet:** the nuclei worker (phase 4); the API
-> refuses it with an explicit "not implemented" error rather than faking results. See [Roadmap](#roadmap--known-limitations).
+> worker liveness checks, extra metrics. Phase 6: cluster-wide concurrency limits and horizontal
+> worker scaling. Remaining gaps: [Roadmap](#roadmap--known-limitations).
 
 > Full status, test results and known limitations: [docs/final-report.md](docs/final-report.md).
 
@@ -53,7 +53,7 @@ workers/common/         ScannerAdapter interface, WorkerRunner, ScopeGuard, subp
 workers/{httpx,tlsx,dns,mapcidr,katana,uncover}/   job adapters (shared scanner image)
 workers/bbot/           BBOT adapter + its own image;  workers/certstream/  passive CT stream
 workers/cve_monitor/    KEV / EPSS / NVD correlation service
-workers/nuclei/         TODO stub (README only); ipranges sync lives in the scheduler
+workers/nuclei/         template scanning (pinned templates); ipranges sync lives in the scheduler
 migrations/             Alembic
 elasticsearch/          ILM policies, bb-base component template, index templates
 logstash/               pipelines.yml, per-stream pipelines, logstash.yml
@@ -201,7 +201,10 @@ See [docs/troubleshooting.md](docs/troubleshooting.md).
 * `SCOPE_BLOCKED` is recorded in the audit log and emitted as an event, with target, program,
   scope, scanner, layer and reason.
 * There is no free-form flag passthrough: tool argv is built from validated fields, with no
-  shell. Cross-host redirects are never followed. Intrusive nuclei tags are excluded by default.
+  shell. Cross-host redirects are never followed. Intrusive nuclei tags are excluded by default;
+  `dos`, `bruteforce` and `default-login` templates are always excluded and cannot be re-enabled.
+* httpx, katana and nuclei send a fixed, honest User-Agent (`BB_USER_AGENT`) instead of their
+  default random browser User-Agents, plus the optional `BB_REQUEST_HEADER` identification header.
 * API keys are stored as SHA-256 hashes, with RBAC (viewer/operator/admin). Every privileged
   action is audited (PostgreSQL, replicated to `bb-audit-*`).
 * Elasticsearch runs with security enabled and least-privilege users. Secrets live in `.env` or
@@ -224,10 +227,14 @@ make build && docker compose up -d   # after code changes
 
 * **Port scanning** (NEW_PORT/PORT_REMOVED producer) is not part of the current worker set.
 * Cloud attribution covers the providers published by lord-alfred/ipranges; ASN attribution covers every routed IP (iptoasn.com).
-* **nuclei worker: deliberately not built in this iteration.** The plumbing exists: the policy
-  schema (severity/tags/template allow-list, intrusive tags excluded by default), the `bb-nuclei-*`
-  template and pipeline, the `detected` correlation status and the dashboard panel. The API rejects
-  `nuclei` jobs as not implemented. See `workers/nuclei/README.md`.
+* **nuclei** runs a curated baseline (`exposure,misconfig,takeover`, medium+), never the whole
+  bundle by default. A selection that cannot finish within the job deadline at the policy rate limit
+  is `BLOCKED / RESOURCE_LIMIT_EXCEEDED` before any traffic is sent. See `workers/nuclei/README.md`.
+* **Tool-internal requests without custom headers:** katana's known-files fetch (`robots.txt`,
+  `sitemap.xml`) and nuclei's initial scheme probe of a bare host (one `HEAD /`) ignore `-H`, so
+  those few requests carry the tool's default User-Agent and no `BB_REQUEST_HEADER`. Set
+  `katana.known_files: []` and scan URL targets with nuclei if a program requires every request to
+  be tagged.
 * CPE mapping covers the curated products in `app/services/technology.py::VENDOR_PRODUCT`; others are only
   correlated when a source supplies a CPE (lower mapping confidence).
 * Dashboards use aggregation-based panels, including time-series line charts (new assets, changes, jobs,

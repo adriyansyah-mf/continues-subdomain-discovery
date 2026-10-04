@@ -47,6 +47,7 @@ x-platform-env: &platform-env
   MAX_SCAN_DURATION: ${MAX_SCAN_DURATION:-900}
   ALLOW_PRIVATE_TARGETS: ${ALLOW_PRIVATE_TARGETS:-false}
   BB_REQUEST_HEADER: ${BB_REQUEST_HEADER:-}
+  BB_USER_AGENT: "${BB_USER_AGENT:-bugbounty-platform/0.1.0 (authorized security testing)}"
 
 # Bounded container logs for every service (structured JSON is also shipped as events).
 x-logging: &default-logging

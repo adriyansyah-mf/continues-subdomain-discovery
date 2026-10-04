@@ -10,3 +10,8 @@ build/
 dist/
 data/*
 !data/.gitkeep
+
+# editor swap/backup files (may contain copies of .env)
+*.swp
+*.swo
+*~

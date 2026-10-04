@@ -30,7 +30,7 @@ from app.services.scans import scope_blocked_event
 from workers.common.adapter import JobContext, RawOutput, ScannerAdapter, ScanOutcome
 from workers.common.event import error_event, raw_event, snapshot_event
 from workers.common.process import ToolError, run_tool
-from workers.common.tooling import binary_version, identification_header, parse_jsonl
+from workers.common.tooling import binary_version, parse_jsonl, request_headers
 
 # Absolute path in the image (see workers/common/Dockerfile); falls back to PATH for local runs.
 BINARY = os.environ.get("HTTPX_BINARY", "httpx")
@@ -76,8 +76,7 @@ def build_argv(ctx: JobContext, binary: str = BINARY) -> list[str]:
     ports = getattr(s, "ports", [])
     if ports and t.kind != "url":
         argv += ["-ports", ",".join(str(p) for p in ports)]
-    header = identification_header()
-    if header:
+    for header in request_headers():
         argv += ["-H", header]
     if ctx.guard.pinned_ips:
         # Pin connections to the addresses validated by the scope guard (DNS rebinding protection).
