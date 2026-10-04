@@ -302,11 +302,20 @@ services:
         MAPCIDR_VERSION: ${MAPCIDR_VERSION}
         KATANA_VERSION: ${KATANA_VERSION}
         UNCOVER_VERSION: ${UNCOVER_VERSION}
+        NUCLEI_VERSION: ${NUCLEI_VERSION}
+        NUCLEI_TEMPLATES_VERSION: ${NUCLEI_TEMPLATES_VERSION:-10.4.9}
+        NUCLEI_TEMPLATES_COMMIT: ${NUCLEI_TEMPLATES_COMMIT:-893122ffce8ebf8e264f15d2cd3960cb1dd36d6c}
     command: ["workers.httpx"]
 
   tlsx-worker:
     <<: *worker
     command: ["workers.tlsx"]
+
+  # Template scanning. Templates are pinned in the image (tag + commit SHA verified at
+  # build); OOB testing is disabled and hosts with URL exclusions are refused, not scanned.
+  nuclei-worker:
+    <<: *worker
+    command: ["workers.nuclei"]
 
   dns-worker:
     <<: *worker

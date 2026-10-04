@@ -147,9 +147,17 @@ class NucleiSettings(ScannerSettings):
     @field_validator("templates")
     @classmethod
     def _templates(cls, v: list[str]) -> list[str]:
+        style = None
         for t in v:
             if not _TEMPLATE_RE.match(t) or ".." in t:
                 raise ValueError(f"invalid template reference {t!r}")
+            # nuclei selects ids (-id, within the bundle) and paths (-t) by different
+            # mechanisms that cannot be combined in one run
+            is_path = "/" in t or t.endswith((".yaml", ".yml"))
+            if style is None:
+                style = "path" if is_path else "id"
+            elif style != ("path" if is_path else "id"):
+                raise ValueError("templates must be all ids or all relative paths (cannot be mixed)")
         return v
 
 

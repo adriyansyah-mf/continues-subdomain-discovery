@@ -25,6 +25,7 @@ class CertObservation:
     domains: tuple[str, ...]  # normalized, non-wildcard names
     wildcards: tuple[str, ...]  # normalized "*.base" names
     invalid_names: tuple[str, ...] = field(default_factory=tuple)
+    flags: tuple[str, ...] = field(default_factory=tuple)
     seen: str | None = None
     source_url: str | None = None
     source_name: str | None = None
@@ -57,6 +58,33 @@ def _names(leaf: dict[str, Any]) -> list[str]:
     return names
 
 
+# "Interesting domains" heuristics (same spirit as the reference project's Logstash buckets):
+# free/abused TLDs, all-digit-leading labels, and punycode/IDN names.
+SUSPICIOUS_TLDS = frozenset({"ml", "tk", "ga", "cf", "gq", "xyz", "top", "work", "click", "link", "zip", "mov"})
+
+
+def classify_name(name: str) -> list[str]:
+    """Return heuristic flags for one normalized (punycode) domain or '*.base' wildcard."""
+    flags: list[str] = []
+    base = name[2:] if name.startswith("*.") else name
+    labels = base.split(".")
+    if labels[-1] in SUSPICIOUS_TLDS:
+        flags.append("suspicious_tld")
+    if any(lbl[:1].isdigit() for lbl in labels[:-1]):
+        flags.append("numeric")
+    if any(lbl.startswith("xn--") for lbl in labels):
+        flags.append("punycode")
+    return flags
+
+
+def classify_names(names: list[str]) -> list[str]:
+    """Union of flags over every name on a certificate (sorted, deduplicated)."""
+    out: set[str] = set()
+    for n in names:
+        out.update(classify_name(n))
+    return sorted(out)
+
+
 def parse_message(msg: Any) -> CertObservation | None:
     """Return an observation for certificate_update messages, None for anything else."""
     if not isinstance(msg, dict) or msg.get("message_type") != "certificate_update":
@@ -80,6 +108,7 @@ def parse_message(msg: Any) -> CertObservation | None:
                 domains.add(normalize_domain(name))
         except InvalidTarget:
             invalid.add(name[:255])
+    flags = classify_names(sorted(domains) + sorted(wildcards))
     subject = leaf.get("subject") or {}
     issuer = leaf.get("issuer") or {}
     source = data.get("source") or {}
@@ -98,6 +127,7 @@ def parse_message(msg: Any) -> CertObservation | None:
         domains=tuple(sorted(domains)),
         wildcards=tuple(sorted(wildcards)),
         invalid_names=tuple(sorted(invalid)),
+        flags=tuple(flags),
         seen=_epoch(data.get("seen")),
         source_url=source.get("url"),
         source_name=source.get("name"),

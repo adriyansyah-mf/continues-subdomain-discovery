@@ -29,6 +29,8 @@ services:
     networks: [backend, lab]
   katana-worker:
     networks: [backend, lab]
+  nuclei-worker:
+    networks: [backend, lab]
 
   # Dev-only notification receiver: http://webhook-sink:8080/<anything>
   webhook-sink:

@@ -152,6 +152,30 @@ def program_update(
     _out(_call("PATCH", f"/programs/{program}", json=body), True)
 
 
+@program_app.command("targets")
+def program_targets(
+    program: str,
+    kind: str = typer.Option("host", help="host | url"),
+    out: str | None = typer.Option(
+        None,
+        "--out",
+        "-o",
+        help="write to this file (via ./bbctl it is inside the container; prefer > redirection)",
+    ),
+) -> None:
+    """In-scope targets for a program (re-verified server-side) - e.g. an input list for external Nuclei."""
+    res = _call("GET", f"/programs/{program}/targets", params={"kind": kind})
+    if out:
+        with open(out, "w") as fh:
+            fh.write("\n".join(res["targets"]) + ("\n" if res["targets"] else ""))
+        console.print(
+            f"{res['count']} in-scope {kind} target(s) -> {out} ({res['skipped_out_of_scope']} skipped as out of scope)"
+        )
+    else:
+        for t in res["targets"]:
+            print(t)
+
+
 @program_app.command("delete")
 def program_delete(program: str, yes: bool = typer.Option(False, "--yes", help="skip confirmation")) -> None:
     """Soft-delete (deactivate and hide) a program."""

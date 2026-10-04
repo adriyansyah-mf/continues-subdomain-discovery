@@ -119,7 +119,7 @@ See [deployment.md](deployment.md#scaling).
 | CertStream (calidog or self-hosted certstream-server-go) | implemented, verified on live CT data |
 | bounty-targets-data, lord-alfred/ipranges, iptoasn | implemented, verified |
 | CISA KEV, EPSS, NVD | implemented, verified |
-| **nuclei** | **not implemented**: documented stub, the API rejects it ([workers/nuclei/README.md](../workers/nuclei/README.md)) |
+| **nuclei** | implemented: templates pinned in the image (tag + commit verified at build), OOB testing disabled, hosts with URL exclusions refused, findings → `bb-nuclei-*` + `detected` CVE correlations ([workers/nuclei/README.md](../workers/nuclei/README.md)) |
 
 ## 10. CVE / KEV flow
 

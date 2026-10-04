@@ -80,9 +80,9 @@ SCANNERS: dict[str, ScannerSpec] = {
             "nuclei",
             "nuclei",
             True,
-            False,
+            True,
             frozenset({"url", "domain", "ipv4", "ipv6"}),
-            "TODO(phase 4): template scanning (ProjectDiscovery nuclei)",
+            "template scanning (ProjectDiscovery nuclei); templates pinned in the image, OOB disabled",
         ),
     )
 }

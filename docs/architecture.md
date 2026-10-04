@@ -47,9 +47,9 @@ and no scope control, this platform:
 | `es-setup` / `kibana-setup` | one-shot | users/roles, ILM, templates / saved objects |
 | `lab-target` (dev overlay) | caddy 2.11.4 | authorized local target on an internal network |
 
-Not yet implemented: the nuclei worker (phase 4) and ASN enrichment for every IP. Their queues, policy schema, index templates and Logstash
-pipelines exist; their worker adapters do not, and the API rejects them with an explicit
-`not implemented` error instead of pretending. See [scanner-workers.md](scanner-workers.md).
+Every scanner in the registry — including the nuclei template scanner (templates pinned in the
+image, OOB testing disabled, hosts with URL exclusions refused) — has a worker adapter; see
+[scanner-workers.md](scanner-workers.md).
 
 ## Data ownership
 

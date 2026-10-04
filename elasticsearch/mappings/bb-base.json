@@ -794,6 +794,12 @@
             },
             "sha256": {
               "type": "keyword"
+            },
+            "flags": {
+              "type": "keyword"
+            },
+            "interesting": {
+              "type": "boolean"
             }
           }
         },

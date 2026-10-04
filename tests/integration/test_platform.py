@@ -59,9 +59,16 @@ def test_scope_bypass_attempts_never_queue(api, program):
     assert any(a["details"].get("target") == "admin.example.com" for a in audit)
 
 
-def test_unimplemented_scanner_is_explicit(api, program):
+def test_unknown_scanner_is_explicit(api, program):
+    r = api.post("/scans", json={"program": program["slug"], "scanners": ["nikto"], "targets": ["a.example.com"]})
+    assert r.status_code == 422 and "unknown scanner" in r.text
+
+
+def test_nuclei_scan_is_accepted(api, program):
     r = api.post("/scans", json={"program": program["slug"], "scanners": ["nuclei"], "targets": ["a.example.com"]})
-    assert r.status_code == 422 and "not implemented" in r.text
+    assert r.status_code == 201, r.text
+    statuses = {j["status"] for j in r.json()["jobs"]}
+    assert statuses & {"QUEUED", "PENDING", "BLOCKED", "OUT_OF_SCOPE", "RUNNING"}, statuses
 
 
 def test_policy_limits_enforced(api):

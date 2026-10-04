@@ -4,7 +4,7 @@
 
 ```
 bbctl health
-bbctl program list | create NAME [--slug --platform --policy --inactive] | update P [--active/--inactive --policy] | delete P
+bbctl program list | create NAME [...] | update P [...] | delete P | targets P [--kind host|url --out FILE]
 bbctl scope list [-p P] | add P VALUE [--type --mode include|exclude] | remove SCOPE_ID | check TARGET [-p P]
 bbctl asset list [-p P --type --q] | show ASSET_ID
 bbctl scan run -p P -t TARGET... [-a ASSET_ID...] -s SCANNER... [--policy --priority --force]
@@ -109,3 +109,9 @@ Bump the version in `.env` (and the `ARG` default in `workers/common/Dockerfile`
 `make build && docker compose up -d`. The installer verifies the release checksum. Run
 `make test` (parsers are tested against recorded output in `tests/fixtures/`) and a lab scan.
 Every job records `tool_version` and `config_hash`.
+
+nuclei templates are pinned the same way: `NUCLEI_TEMPLATES_VERSION` plus the tag's commit SHA
+in `NUCLEI_TEMPLATES_COMMIT` (from the GitHub API `git/ref/tags/<tag>`; the installer refuses a
+clone whose HEAD differs). The adapter also cross-checks the image's release marker against the
+env at every job, so a stale mix of pins fails closed instead of scanning with unknown
+templates.

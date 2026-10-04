@@ -204,7 +204,10 @@ class ScanService:
             raise ScanRequestError("at least one scanner is required")
         specs = []
         for name in dict.fromkeys(scanners):
-            spec = get_scanner(name)
+            try:
+                spec = get_scanner(name)
+            except ValueError as exc:  # unknown scanner: a request error, not a server error
+                raise ScanRequestError(str(exc)) from exc
             if not spec.implemented:
                 raise ScanRequestError(f"scanner {name!r} is not implemented yet ({spec.description})")
             specs.append(spec)

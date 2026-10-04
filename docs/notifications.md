@@ -20,7 +20,7 @@ notifier service --> NotificationPolicy match --> dedup --> provider (HTTPS / SM
 | TECHNOLOGY_ADDED / REMOVED | TECHNOLOGY_CHANGED | low |
 | NEW_CVE (correlation) | NEW_CVE | medium |
 | KEV_ADDED (correlated CVE in CISA KEV) | NEW_KEV | critical |
-| NEW_CRITICAL_FINDING | NEW_CRITICAL_FINDING | critical (no producer until the nuclei worker exists) |
+| NEW_CRITICAL_FINDING | NEW_CRITICAL_FINDING | critical (nuclei worker, new critical finding) |
 | SCAN_FAILURE (job will retry) | SCAN_FAILURE | low |
 | DLQ_EVENT (job dead-lettered) | DLQ_EVENT | medium |
 

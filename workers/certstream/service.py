@@ -73,6 +73,8 @@ def tls_body(obs: CertObservation) -> dict[str, Any]:
             "update_type": obs.update_type,
             "sha1": obs.sha1,
             "sha256": obs.sha256,
+            "flags": list(obs.flags),
+            "interesting": bool(obs.flags),
         },
     }
 

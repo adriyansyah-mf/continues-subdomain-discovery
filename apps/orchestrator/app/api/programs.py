@@ -177,3 +177,66 @@ def delete_scope(
 def scope_check(body: ScopeCheckIn, session: Session = Depends(get_session), _: Principal = Depends(viewer)) -> dict:
     """Explain a scope decision ("why is this in scope?") without creating anything."""
     return check_scope(session, body.target, body.program_id).to_dict()
+
+
+@router.get("/programs/{ref}/targets")
+def program_targets(
+    ref: str,
+    session: Session = Depends(get_session),
+    _: Principal = Depends(viewer),
+    kind: str = Query("host", description="host | url"),
+    limit: int = Query(10000, le=100000),
+) -> dict:
+    """In-scope, scannable targets for a program, re-verified by the ScopeEngine server-side.
+
+    Only assets whose program link is in_scope, that are not paused/retired, AND that still pass a
+    fresh scope check are returned. Intended as the input list for an external tool (e.g. Nuclei);
+    the scope guarantee stays on the platform so the external run cannot exceed approved scope.
+    """
+    from sqlalchemy import select as _select
+
+    from app.models import Asset, ProgramAsset
+    from app.scope.engine import ScopeEngine
+    from app.scope.normalize import InvalidTarget, classify_target
+    from app.scope.service import load_rules
+
+    program = _program(session, ref)
+    wanted: tuple[str, ...]
+    if kind == "url":
+        wanted = ("url",)
+    elif kind == "host":
+        wanted = ("domain", "subdomain", "ipv4", "ipv6")
+    else:
+        raise HTTPException(422, "kind must be 'host' or 'url'")
+
+    engine = ScopeEngine(load_rules(session, program.id))
+    rows = session.execute(
+        _select(Asset.normalized_value, Asset.asset_type)
+        .join(ProgramAsset, ProgramAsset.asset_id == Asset.id)
+        .where(
+            ProgramAsset.program_id == program.id,
+            ProgramAsset.status == "in_scope",
+            Asset.asset_type.in_(wanted),
+            Asset.paused.is_(False),
+            Asset.status.notin_(("retired", "blocked")),
+        )
+        .order_by(Asset.last_seen.desc())
+        .limit(limit)
+    ).all()
+
+    targets, skipped = [], 0
+    for value, _atype in rows:
+        try:
+            if engine.is_in_scope(classify_target(value), program.id).allowed:
+                targets.append(value)
+            else:
+                skipped += 1
+        except InvalidTarget:
+            skipped += 1
+    return {
+        "program": program.slug,
+        "kind": kind,
+        "count": len(targets),
+        "skipped_out_of_scope": skipped,
+        "targets": targets,
+    }
