@@ -60,7 +60,9 @@ class Schedule(TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    # Single scanner, or (for a full-auto "watch" monitor) several run together each cycle.
     scanner: Mapped[str] = mapped_column(String(32), nullable=False)
+    scanners: Mapped[list[str] | None] = mapped_column(JSONB)
     program_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("programs.id", ondelete="CASCADE")
     )

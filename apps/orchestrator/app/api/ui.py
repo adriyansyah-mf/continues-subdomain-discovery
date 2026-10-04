@@ -73,7 +73,7 @@ _PAGE = """<!doctype html>
 <div id="toast"></div>
 <script>
 const S={base:localStorage.getItem('bb_base')||'',key:localStorage.getItem('bb_key')||'',
-         kibana:localStorage.getItem('bb_kibana')||'',tab:'programs',programs:[],policies:[]};
+         kibana:localStorage.getItem('bb_kibana')||'',tab:'watch',programs:[],policies:[]};
 const $=(s,r=document)=>r.querySelector(s); const el=(h)=>{const d=document.createElement('div');d.innerHTML=h;return d.firstElementChild;};
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function toast(msg,ok=true){const t=el(`<div class="msg ${ok?'ok':'err'}">${esc(msg)}</div>`);$('#toast').appendChild(t);setTimeout(()=>t.remove(),ok?3500:7000);}
@@ -93,7 +93,7 @@ async function refreshWho(){
   try{const s=await api('GET','/stats');$('#whoami').textContent='connected · '+(s.assets?.total??0)+' assets';$('#whoami').className='chip s-ok';render();}
   catch(e){$('#whoami').textContent='auth failed';$('#whoami').className='chip s-bad';toast(e.message,false);}
 }
-const TABS=['programs','scope','scan','jobs','policies','schedules','stats'];
+const TABS=['watch','programs','scope','scan','jobs','policies','schedules','stats'];
 function setTab(t){S.tab=t;[...$('#tabs').children].forEach(b=>b.classList.toggle('active',b.dataset.t===t));render();}
 function renderTabs(){$('#tabs').innerHTML='';TABS.forEach(t=>{const b=el(`<button data-t="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`);b.onclick=()=>setTab(t);$('#tabs').appendChild(b);});setTab(S.tab);}
 async function loadProgramsPolicies(){try{S.programs=await api('GET','/programs');}catch{} try{S.policies=await api('GET','/policies');}catch{}}
@@ -102,6 +102,7 @@ function progOptions(sel){return S.programs.map(p=>`<option value="${esc(p.slug|
 async function render(){
   const v=$('#view'); if(!S.key){v.innerHTML='<div class="card">Masukkan API key di kanan atas lalu klik <b>Connect</b>. Key = <code>BB_API_KEY</code>/<code>BB_BOOTSTRAP_ADMIN_KEY</code>.</div>';return;}
   await loadProgramsPolicies();
+  if(S.tab==='watch')return viewWatch(v);
   if(S.tab==='programs')return viewPrograms(v);
   if(S.tab==='scope')return viewScope(v);
   if(S.tab==='scan')return viewScan(v);
@@ -109,6 +110,30 @@ async function render(){
   if(S.tab==='policies')return viewPolicies(v);
   if(S.tab==='schedules')return viewSchedules(v);
   if(S.tab==='stats')return viewStats(v);
+}
+function viewWatch(v){
+  v.innerHTML=`<div class="card"><h2>Watch a scope — full auto</h2>
+    <p class="mut" style="margin-top:-6px">Masukkan scope, selesai. Platform otomatis: bikin program, pasang scope, temukan subdomain, lalu scan terus-menerus (dns, http, tls, crawl, nuclei). Asset baru auto-scan. Hasil di Kibana.</p>
+    <div class="row"><input id="wv" placeholder="*.ezviz.com  /  example.com  /  1.2.3.0/24" style="width:320px;font-size:16px;padding:10px">
+      <button style="font-size:16px;padding:10px 18px" onclick="runWatch()">▶ Watch</button></div>
+    <div class="row"><label>Nama (opsional)</label><input id="wn" placeholder="(default: domain)" style="width:200px">
+      <label>Interval</label><select id="wi"><option value="3600">tiap 1 jam</option><option value="21600" selected>tiap 6 jam</option><option value="86400">tiap 24 jam</option></select></div>
+    <div id="wres"></div></div>
+    <div class="card"><h2 class="mut" style="text-transform:none">⚠️ Penting</h2>
+    Ini mengirim traffic nyata (termasuk vuln scan) ke semua host di bawah scope, berulang. Jalankan HANYA untuk program bug bounty yang kamu ikuti & dalam scope resminya. Platform menegakkan scope yang kamu masukkan, bukan otorisasi program aslinya.</div>`;
+}
+async function runWatch(){
+  const value=$('#wv').value.trim(); if(!value)return toast('isi scope dulu',false);
+  const body={value,interval_seconds:+$('#wi').value}; const n=$('#wn').value.trim(); if(n)body.name=n;
+  $('#wres').innerHTML='<p class=mut>menyiapkan…</p>';
+  try{const r=await api('POST','/watch',body);
+    $('#wres').innerHTML=`<div class="msg ok" style="position:static">✅ Watch aktif untuk <b>${esc(r.program)}</b>${r.reused_program?' (program dipakai ulang)':''}.<br>
+      Scope: ${esc((r.scope||[]).join(', '))}<br>Scanner: ${esc((r.scanners||[]).join(', '))}<br>
+      Jadwal: <code>${esc(r.schedule||'-')}</code> (tiap ${Math.round((r.interval_seconds||0)/3600)} jam)<br>
+      Scan awal: ${esc(JSON.stringify(r.initial_scan||{}))}</div>
+      <p>Pantau di tab <b>Jobs</b>, hasil lengkap di <b>Kibana</b>.</p>`;
+    toast('watch dibuat untuk '+r.program);
+  }catch(e){$('#wres').innerHTML='';toast(e.message,false);}
 }
 function viewPrograms(v){
   v.innerHTML=`<div class="card"><h2>New program</h2>

@@ -184,6 +184,12 @@ class ScanOut(ORM):
     finished_at: datetime | None
 
 
+class WatchIn(BaseModel):
+    value: str = Field(description="scope value, e.g. *.example.com / example.com / 1.2.3.0/24")
+    name: str | None = Field(default=None, description="program name; defaults to the registrable domain")
+    interval_seconds: int = Field(default=6 * 3600, ge=300, le=30 * 86400)
+
+
 class ScanCreatedOut(BaseModel):
     scan: ScanOut
     summary: dict[str, int]
@@ -215,6 +221,7 @@ class ScheduleOut(ORM):
     id: uuid.UUID
     name: str
     scanner: str
+    scanners: list[str] | None = None
     program_id: uuid.UUID | None
     policy_id: uuid.UUID | None
     interval_seconds: int

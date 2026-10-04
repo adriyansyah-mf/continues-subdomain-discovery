@@ -251,6 +251,18 @@ def asset_show(asset_id: str, relationships: bool = typer.Option(True)) -> None:
 
 
 # --- scans -------------------------------------------------------------------
+@app.command("watch")
+def watch(
+    value: str,
+    name: str | None = typer.Option(None, help="program name; default = registrable domain"),
+    interval: int = typer.Option(6 * 3600, help="monitor interval (seconds)"),
+    as_json: bool = JSON_OPT,
+) -> None:
+    """Full-auto: add a scope and let the platform discover + scan + monitor it continuously."""
+    res = _call("POST", "/watch", json={"value": value, "name": name, "interval_seconds": interval})
+    _out(res, as_json)
+
+
 @scan_app.command("run")
 def scan_run(
     program: str = typer.Option(..., "--program", "-p"),

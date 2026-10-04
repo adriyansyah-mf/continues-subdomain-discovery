@@ -139,7 +139,8 @@ class Scheduler:
             for sched in due:
                 sched.last_run_at = now
                 sched.next_run_at = now + timedelta(seconds=sched.interval_seconds)
-                spec = get_scanner(sched.scanner)
+                # A watch monitor lists several scanners; a plain schedule has one.
+                scanners = sched.scanners or [sched.scanner]
                 programs = (
                     [s.get(Program, sched.program_id)]
                     if sched.program_id
@@ -152,36 +153,46 @@ class Scheduler:
                 for program in programs:
                     if program is None or not program.active:
                         continue
-                    asset_ids = list(
-                        s.execute(
-                            select(Asset.id)
-                            .join(ProgramAsset, ProgramAsset.asset_id == Asset.id)
-                            .where(
-                                ProgramAsset.program_id == program.id,
-                                ProgramAsset.status == "in_scope",
-                                Asset.paused.is_(False),
-                                Asset.asset_type.in_(_asset_types_for(spec.target_types)),
+                    for scanner in scanners:
+                        spec = get_scanner(scanner)
+                        asset_ids = list(
+                            s.execute(
+                                select(Asset.id)
+                                .join(ProgramAsset, ProgramAsset.asset_id == Asset.id)
+                                .where(
+                                    ProgramAsset.program_id == program.id,
+                                    ProgramAsset.status == "in_scope",
+                                    Asset.paused.is_(False),
+                                    Asset.asset_type.in_(_asset_types_for(spec.target_types)),
+                                )
+                                .limit(self.settings.max_targets_per_scan)
+                            ).scalars()
+                        )
+                        if not asset_ids:
+                            continue
+                        try:
+                            plan = ScanService(s, emitter=self.emitter).create_scan(
+                                principal=SYSTEM,
+                                program_id=program.id,
+                                scanners=[scanner],
+                                asset_ids=asset_ids,
+                                policy_id=sched.policy_id,
+                                trigger=f"schedule:{sched.name}",
                             )
-                            .limit(self.settings.max_targets_per_scan)
-                        ).scalars()
-                    )
-                    if not asset_ids:
-                        continue
-                    try:
-                        plan = ScanService(s, emitter=self.emitter).create_scan(
-                            principal=SYSTEM,
-                            program_id=program.id,
-                            scanners=[sched.scanner],
-                            asset_ids=asset_ids,
-                            policy_id=sched.policy_id,
-                            trigger=f"schedule:{sched.name}",
-                        )
-                        log.info(
-                            "scheduled scan created",
-                            extra={"schedule": sched.name, "program": program.slug, "summary": plan.summary()},
-                        )
-                    except ScanRequestError as exc:
-                        log.warning("scheduled scan skipped", extra={"schedule": sched.name, "error": str(exc)})
+                            log.info(
+                                "scheduled scan created",
+                                extra={
+                                    "schedule": sched.name,
+                                    "scanner": scanner,
+                                    "program": program.slug,
+                                    "summary": plan.summary(),
+                                },
+                            )
+                        except ScanRequestError as exc:
+                            log.warning(
+                                "scheduled scan skipped",
+                                extra={"schedule": sched.name, "scanner": scanner, "error": str(exc)},
+                            )
 
     def sync_ipranges(self) -> None:
         """Daily provider-range refresh (enrichment data only)."""

@@ -127,6 +127,7 @@ class KatanaSettings(ScannerSettings):
 Severity = Literal["info", "low", "medium", "high", "critical"]
 
 
+AUTO_POLICY_NAME = "full-auto"
 _DEFAULT_SEVERITY: tuple[Severity, ...] = ("medium", "high", "critical")
 # Destructive and credential-guessing templates are never allowed: the worker always passes
 # these to -etags (which overrides -tags/-id/-t selection) and policies cannot select them.
@@ -266,6 +267,17 @@ DEFAULT_POLICIES: dict[str, tuple[str, dict]] = {
             "httpx": _on(rate_limit=20, concurrency=4),
             "tlsx": _on(rate_limit=10, concurrency=2),
             "katana": _on(rate_limit=5, concurrency=2, depth=3),
+            "nuclei": _on(rate_limit=10, concurrency=2, max_duration=900, time_bucket_seconds=86400, tags=_BASELINE),
+        },
+    ),
+    AUTO_POLICY_NAME: (
+        "Full automated pipeline for watched scopes: discovery (BBOT) + DNS/HTTP/TLS + crawl + nuclei.",
+        {
+            "bbot": _on(time_bucket_seconds=86400, max_duration=900),
+            "dns": _on(),
+            "httpx": _on(rate_limit=10, concurrency=2),
+            "tlsx": _on(rate_limit=10, concurrency=2),
+            "katana": _on(rate_limit=5, concurrency=2, depth=2, time_bucket_seconds=86400),
             "nuclei": _on(rate_limit=10, concurrency=2, max_duration=900, time_bucket_seconds=86400, tags=_BASELINE),
         },
     ),

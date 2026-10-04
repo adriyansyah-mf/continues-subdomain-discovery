@@ -12,16 +12,50 @@ from app.database import get_session
 from app.models import Scan, ScanJob, ScanPolicy
 from app.models.enums import JobStatus
 from app.queue.redis_queue import RedisQueue
-from app.schemas.api import JobOut, ScanCreatedOut, ScanDetailOut, ScanIn, ScanOut
+from app.schemas.api import JobOut, ScanCreatedOut, ScanDetailOut, ScanIn, ScanOut, WatchIn
 from app.scope.service import ScopeUnavailableError
 from app.services import programs as program_svc
 from app.services.audit import Principal, record_audit
 from app.services.events import EventEmitter
 from app.services.scans import ScanRequestError, ScanService, cancel_scan, dispatch_pending
+from app.services.watch import WatchError, watch_scope, watch_summary
 from app.utils.time import utcnow
 
 router = APIRouter(tags=["scans", "jobs"])
 log = logging.getLogger(__name__)
+
+
+@router.post("/watch", status_code=201)
+def watch(
+    body: WatchIn,
+    session: Session = Depends(get_session),
+    principal: Principal = Depends(operator),
+    emitter: EventEmitter = Depends(get_emitter),
+    queue: RedisQueue = Depends(get_queue),
+) -> dict:
+    """Full-auto: from one scope value, set up program + scope + monitor schedule + first scan."""
+    try:
+        result = watch_scope(
+            session,
+            principal,
+            value=body.value,
+            name=body.name,
+            interval_seconds=body.interval_seconds,
+            emitter=emitter,
+        )
+    except ScopeUnavailableError as exc:
+        raise HTTPException(503, f"scope state unavailable; refusing to create jobs: {exc}") from exc
+    except (WatchError, ScanRequestError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    session.commit()
+    if result.plan is not None:
+        new_ids = [
+            pj.job.id for pj in result.plan.jobs if not pj.duplicate and pj.job.status == JobStatus.PENDING.value
+        ]
+        if new_ids:
+            dispatch_pending(session, queue, job_ids=new_ids, emitter=emitter)
+            session.commit()
+    return watch_summary(result)
 
 
 @router.post("/scans", response_model=ScanCreatedOut, status_code=201)

@@ -139,3 +139,35 @@ def test_correlation_is_explained(api, es):
         assert s["vulnerability"]["status"] == "potential"
         assert s["technology"]["version"] and s["cve"]["cpe"].startswith("cpe:2.3:a:")
         assert s["cve"]["cpe_confidence_level"] in ("low", "medium", "high")
+
+
+def test_watch_full_auto_sets_up_everything(api):
+    label = f"wtest-{uuid.uuid4().hex[:8]}"
+    value = f"*.{label}.com"
+    prog = None
+    try:
+        r = api.post("/watch", json={"value": value, "interval_seconds": 3600})
+        assert r.status_code == 201, r.text
+        body = r.json()
+        prog = body["program"]  # slug derived from the registrable domain (dots -> dashes)
+        assert label in prog and body["reused_program"] is False
+        # wildcard + apex both added to scope
+        assert f"{label}.com" in body["scope"]
+        assert set(body["scanners"]) == {"bbot", "dns", "httpx", "tlsx", "katana", "nuclei"}
+        assert body["schedule"] == f"watch:{prog}"
+        assert body["initial_scan"]  # a first scan was planned
+
+        sched = {s["name"]: s for s in api.get("/schedules").json()}
+        assert sched[f"watch:{prog}"]["enabled"] is True
+        assert set(sched[f"watch:{prog}"]["scanners"]) == set(body["scanners"])
+
+        scope = api.get(f"/programs/{prog}/scope").json()
+        kinds = {(e["type"], e["mode"]) for e in scope}
+        assert ("wildcard", "include") in kinds and ("domain", "include") in kinds
+
+        # watching the same value again reuses the program
+        r2 = api.post("/watch", json={"value": value})
+        assert r2.status_code == 201 and r2.json()["reused_program"] is True
+    finally:
+        if prog:
+            api.delete(f"/programs/{prog}")  # cascades the watch schedule
