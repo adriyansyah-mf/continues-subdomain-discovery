@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import admin, get_emitter, get_queue, operator, viewer
+from app.config import get_settings
 from app.database import get_session
 from app.models import (
     ApiKey,
@@ -29,7 +30,15 @@ from app.models import (
     ScopeEntry,
 )
 from app.queue.redis_queue import QUEUE_NAMES, RedisQueue
-from app.schemas.api import ApiKeyIn, AuditOut, MaintenanceIn, ScannerControlIn, ScheduleOut, SchedulePatch
+from app.schemas.api import (
+    ApiKeyIn,
+    AuditOut,
+    MaintenanceIn,
+    ScaleEventIn,
+    ScannerControlIn,
+    ScheduleOut,
+    SchedulePatch,
+)
 from app.services import programs as program_svc
 from app.services.audit import Principal, record_audit
 from app.services.events import EventEmitter
@@ -69,19 +78,36 @@ def stats(
     }
 
 
+def _oldest_queued_seconds(session: Session) -> dict[str, float]:
+    """Age of the oldest QUEUED (not yet started) job per scanner."""
+    now = utcnow()
+    rows = session.execute(
+        select(ScanJob.scanner, func.min(ScanJob.queued_at)).where(ScanJob.status == "QUEUED").group_by(ScanJob.scanner)
+    )
+    return {scanner: max(0.0, (now - oldest).total_seconds()) for scanner, oldest in rows if oldest is not None}
+
+
 @router.get("/workers")
-def workers(_: Principal = Depends(viewer), queue: RedisQueue = Depends(get_queue)) -> dict:
+def workers(
+    _: Principal = Depends(viewer),
+    queue: RedisQueue = Depends(get_queue),
+    session: Session = Depends(get_session),
+) -> dict:
     live = queue.workers()
+    oldest = _oldest_queued_seconds(session)
+    queue_scanner = {s.queue: s.name for s in SCANNERS.values()}
     pools = {
         name: {
             **d,
             "workers": sum(1 for w in live if w.queue == name),
             "busy_workers": sum(1 for w in live if w.queue == name and w.data.get("current_job")),
+            "oldest_queued_seconds": oldest.get(queue_scanner.get(name, "")),
         }
         for name, d in queue.depths().items()
     }
     return {
         "pools": pools,
+        "limits": {"max_concurrent_scans": get_settings().max_concurrent_scans},
         "workers": [{"worker_id": w.worker_id, "queue": w.queue, **w.data} for w in live],
         "scanners": [
             {
@@ -166,6 +192,29 @@ def patch_schedule(
         emitter=emitter,
     )
     return sched
+
+
+@router.post("/workers/scale-events", status_code=201)
+def scale_event(
+    body: ScaleEventIn,
+    session: Session = Depends(get_session),
+    principal: Principal = Depends(operator),
+    emitter: EventEmitter = Depends(get_emitter),
+) -> dict:
+    """Audit a replica change. The autoscaler calls this *before* scaling and skips the change if
+    the call fails, so no unaudited worker-configuration change happens."""
+    if body.scanner not in SCANNERS:
+        raise HTTPException(422, "unknown scanner")
+    record_audit(
+        session,
+        principal,
+        "worker.scaled",
+        target_type="scanner",
+        target_id=None,
+        details=body.model_dump(),
+        emitter=emitter,
+    )
+    return {"recorded": True}
 
 
 @router.put("/scanners/{scanner}")

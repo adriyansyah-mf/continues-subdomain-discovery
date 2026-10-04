@@ -26,7 +26,7 @@ python_version = "3.12"
 ignore_missing_imports = true
 check_untyped_defs = true
 warn_unused_ignores = true
-files = ["apps/orchestrator/app", "workers"]
+files = ["apps/orchestrator/app", "workers", "scripts/autoscale.py"]
 exclude = ["workers/cve-monitor"]
 
 [tool.pytest.ini_options]

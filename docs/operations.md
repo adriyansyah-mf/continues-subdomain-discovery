@@ -47,6 +47,7 @@ GET/POST /maintenance-windows
 POST /api-keys              (admin; returns the key once)
 POST /sync/bounty-targets   POST /sync/ipranges   POST /sync/asn   POST /sync/kev   POST /sync/epss (202)   POST /sync/cve (202)
 GET /stats   GET /workers   GET /queues[?dlq=<queue>]   GET /audit
+POST /workers/scale-events  (autoscaler; audits a replica change before it is applied)
 POST /queues/{queue}/dlq/replay   DELETE /queues/{queue}/dlq (admin)
 GET /notifications/types   GET/POST /notifications/channels   PATCH/DELETE /notifications/channels/{name}
 POST /notifications/channels/{name}/test   GET/POST /notifications/policies   DELETE /notifications/policies/{id}

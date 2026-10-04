@@ -97,14 +97,41 @@ Compose gives it `WORKER_STOP_GRACE` (180 s; BBOT `BBOT_STOP_GRACE` 600 s) befor
 Tools run in their own process group, so the signal does not interrupt them. A worker killed
 anyway is recovered by the scheduler's reaper (retry or DLQ).
 
-**Autoscaling signals.** The platform does not scale itself. It exposes the inputs an operator or
-external autoscaler needs:
+**Autoscaling.** `scripts/autoscale.py` runs on the Docker host (`make autoscale`, `make
+autoscale-dev` for the dev overlay, `make autoscale-dry` for one round of decisions without
+changes). Containers get no Docker-socket access: the host process applies changes with
+`docker compose up -d --no-deps --no-recreate --scale <scanner>-worker=N`.
+
+Each interval (`AUTOSCALE_INTERVAL_SECONDS`, 60), for every pool in `AUTOSCALE_SCANNERS`:
+
+1. Clamp into `[min, ceiling]`, where ceiling = min(`AUTOSCALE_MAX_<SCANNER>` or
+   `AUTOSCALE_MAX_REPLICAS`, `MAX_CONCURRENT_SCANS`). More replicas than `MAX_CONCURRENT_SCANS`
+   would only wait for slots.
+2. **Up by one** when jobs are queued, every replica is busy, the oldest queued job has waited
+   `AUTOSCALE_UP_WAIT_SECONDS` (120), the pool is out of cooldown (`AUTOSCALE_COOLDOWN_SECONDS`,
+   300), and the total stays within `AUTOSCALE_MAX_TOTAL_REPLICAS` (12; each worker has
+   `WORKER_MEM_LIMIT` of memory).
+3. **Down by one** when nothing is queued and no replica is busy for `AUTOSCALE_DOWN_IDLE_SECONDS`
+   (600). Requiring zero busy replicas matters because compose stops the highest-numbered
+   container, which may not be the idle one, and jobs can outlive the stop grace period.
+4. Otherwise hold.
+
+Every change is first recorded through `POST /workers/scale-events` (operator; audit action
+`worker.scaled`). If that call fails, the change is skipped. If the API or Docker is unavailable,
+nothing changes that round. `certstream-worker` (one websocket) is never scaled. The API key
+comes from `BB_API_KEY` (an operator key), falling back to `BB_BOOTSTRAP_ADMIN_KEY`.
+
+Scaling never raises the load on a single target or program: every replica must still take the
+per-scanner, per-program and per-host slots above. Verified: with two nuclei jobs against one lab
+host, the second replica logged `job deferred: no free host slot` until the first job finished.
+
+The same inputs are available to other autoscalers:
 * `GET /workers` → `pools.<queue>`: `pending`, `high_priority`, `dlq`, `workers`, `busy_workers`
 * `/metrics`: `queue_depth{queue}`, `scanner_queue_wait_seconds{scanner}` (age of the oldest
   queued job), `worker_health{queue}`, `worker_busy{queue}`, `scanner_jobs_running{scanner}`
 
-A reasonable policy: add a replica of scanner X while `scanner_queue_wait_seconds{scanner="X"}`
-stays above a few minutes and `worker_busy == worker_health`, up to `MAX_CONCURRENT_SCANS`.
+* `GET /workers` also returns `pools.<queue>.oldest_queued_seconds` and
+  `limits.max_concurrent_scans`.
 
 **Verified (dev stack, 3 httpx replicas):** 30 jobs split 11/8/11 across replicas, all
 successful in about 64 s. httpx, tlsx and katana submitted together against one host ran strictly

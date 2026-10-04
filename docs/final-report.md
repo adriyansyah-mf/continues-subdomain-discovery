@@ -166,15 +166,15 @@ locally. See [operations.md](operations.md).
 
 ## 15. API endpoints
 
-There are 60 routes: health/ready/metrics, programs, scope (including `/scope/check`), assets and
+There are 61 routes: health/ready/metrics, programs, scope (including `/scope/check`), assets and
 relationships, scans and jobs, policies, schedules, scanner controls, maintenance windows, API
 keys, sync (bounty-targets, ipranges, asn, kev, epss, cve), queues/DLQ, audit, notifications and
-workers. OpenAPI documentation is at `/docs`.
+workers (including the autoscaler's audited `POST /workers/scale-events`). OpenAPI documentation is at `/docs`.
 
 ## 16. Test results
 
-- `make lint`: ruff and mypy are clean (113 source files).
-- `make test`: 218 unit tests pass. They cover scope bypass and malformed input, normalization,
+- `make lint`: ruff and mypy are clean (115 source files).
+- `make test`: 230 unit tests pass. They cover scope bypass and malformed input, normalization,
   idempotency, policies, the queue and limits, parsers on recorded output, change detection,
   notifications, KEV/EPSS/NVD/CPE and ASN.
 - `make test-integration`: 16 tests pass against the live stack. They cover auth/RBAC, scope
@@ -184,6 +184,9 @@ workers. OpenAPI documentation is at `/docs`.
   - failure behaviour: Redis down, PostgreSQL down;
   - graceful shutdown;
   - three-replica load test and per-host serialization;
+  - autoscaler: two nuclei jobs on one lab host scaled the pool 1 → 2 (audited `worker.scaled`
+    first, new replica joined the lab network), the second replica waited for the host slot
+    ("no free host slot"), and the pool returned to 1 after both jobs finished;
   - fair share between programs;
   - DLQ replay;
   - notifications with HMAC signatures;
@@ -197,8 +200,8 @@ workers. OpenAPI documentation is at `/docs`.
 
 - katana's known-files fetch and nuclei's bare-host scheme probe ignore custom headers (a few
   requests per job without `BB_USER_AGENT` / `BB_REQUEST_HEADER`); see the README roadmap.
-- No replica-count recommendation or automatic scaling. The signals are exposed instead
-  (`/workers` pools, `scanner_queue_wait_seconds`, `worker_busy`).
+- The autoscaler (`scripts/autoscale.py`) manages Docker Compose replicas on the local host only, and
+  runs in the foreground (`make autoscale`); run it under systemd or tmux to keep it going.
 - Request rates are limited per job (tool rate limit × per-host concurrency). There are no
   per-program or per-host request-rate budgets.
 - katana cannot pin connections to validated IPs. DNS-rebinding protection for crawling relies on
@@ -211,8 +214,7 @@ workers. OpenAPI documentation is at `/docs`.
 ## 18. Remaining TODOs
 
 - Optional: a technology-specific nuclei policy driven by httpx fingerprints.
-- Optional: Lens dashboards, request-rate budgets, an external autoscaler driven by the exposed
-  metrics, and Vault integration for secrets.
+- Optional: Lens dashboards, request-rate budgets, and Vault integration for secrets.
 
 ## 19. Deployment instructions
 

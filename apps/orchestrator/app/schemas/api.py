@@ -230,6 +230,15 @@ class SchedulePatch(BaseModel):
     policy: str | None = None
 
 
+class ScaleEventIn(BaseModel):
+    """A replica change about to be applied by the autoscaler (audited before it happens)."""
+
+    scanner: str
+    from_replicas: int = Field(ge=0, le=1000)
+    to_replicas: int = Field(ge=0, le=1000)
+    reason: str = Field(max_length=300)
+
+
 class ScannerControlIn(BaseModel):
     paused: bool
     reason: str | None = None

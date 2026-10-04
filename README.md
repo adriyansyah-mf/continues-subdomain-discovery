@@ -182,7 +182,13 @@ See [docs/notifications.md](docs/notifications.md).
 - **Fair share:** at most `DISPATCH_MAX_QUEUED_PER_PROGRAM` jobs per program and scanner wait in the queue at once.
 - **Priority:** high-priority lanes for jobs with priority ≥ 7.
 - **Graceful shutdown:** a stopping worker finishes its current job.
-- **Autoscaling signals:** queue wait, busy workers and per-queue pools in `/metrics` and `GET /workers`.
+- **Autoscaling:** `make autoscale` (or `make autoscale-dev`) runs `scripts/autoscale.py` on the Docker
+  host. It adds a replica when a pool's backlog has waited `AUTOSCALE_UP_WAIT_SECONDS` with every
+  replica busy, and removes one after `AUTOSCALE_DOWN_IDLE_SECONDS` with nothing queued and nothing
+  running. Replicas are capped by `AUTOSCALE_MAX_*`, `MAX_CONCURRENT_SCANS` and
+  `AUTOSCALE_MAX_TOTAL_REPLICAS`; each change is audited (`worker.scaled`) before it is applied.
+  Replicas never raise the load on one host or program: the cluster-wide slots still apply.
+  `make autoscale-dry` prints one round of decisions.
 
 See [docs/deployment.md](docs/deployment.md#scaling).
 
@@ -239,8 +245,9 @@ make build && docker compose up -d   # after code changes
   correlated when a source supplies a CPE (lower mapping confidence).
 * Dashboards use aggregation-based panels, including time-series line charts (new assets, changes, jobs,
   notifications); Lens versions are optional polish.
-* **Scaling (phase 6) remaining:**
-  * automatic replica management (the platform exposes the signals and enforces cluster-wide limits);
-  * request-rate budgets per program/host (today: per-job tool rate limit × per-host concurrency).
+* **Scaling (phase 6) remaining:** request-rate budgets per program/host (today: per-job tool rate
+  limit × per-host concurrency). The autoscaler targets Docker Compose on one host; for other
+  orchestrators, drive their scaler from `GET /workers` with the same algorithm
+  (`app/services/autoscale.py`).
 * ASN scope entries do not authorize IPs. The single-node Elasticsearch runs without TLS (dev).
   `bb-scans-*` is reserved but not yet written.
