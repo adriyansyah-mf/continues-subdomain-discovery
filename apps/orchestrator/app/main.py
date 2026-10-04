@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
-from app.api import assets, health, notifications, ops, policies, programs, scans, sync
+from app.api import assets, health, notifications, ops, policies, programs, scans, sync, ui
 from app.config import get_settings
 from app.database import session_scope
 from app.services.programs import ConflictError, NotFoundError
@@ -68,5 +68,6 @@ for router in (
     sync.router,
     ops.router,
     notifications.router,
+    ui.router,
 ):
     app.include_router(router)

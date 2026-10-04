@@ -17,6 +17,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "B"]
+# ui.py embeds an HTML/JS single-page app as a string literal; long lines there are expected.
+"apps/orchestrator/app/api/ui.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "workers"]

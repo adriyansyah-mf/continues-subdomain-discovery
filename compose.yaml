@@ -257,7 +257,7 @@ services:
       NOTIFY_TELEGRAM_TOKEN: ${NOTIFY_TELEGRAM_TOKEN:-}
       NOTIFY_WEBHOOK_SECRET: ${NOTIFY_WEBHOOK_SECRET:-}
       NOTIFY_SMTP_PASSWORD: ${NOTIFY_SMTP_PASSWORD:-}
-    ports: ["127.0.0.1:${API_PORT:-18000}:8000"]
+    ports: ["${API_BIND_HOST:-127.0.0.1}:${API_PORT:-18000}:8000"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
