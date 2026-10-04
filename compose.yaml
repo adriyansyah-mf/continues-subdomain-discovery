@@ -145,7 +145,7 @@ services:
       TELEMETRY_OPTIN: "false"
       NODE_OPTIONS: --max-old-space-size=${KIBANA_NODE_MEMORY_MB:-1024}
     volumes: [kibanadata:/usr/share/kibana/data]
-    ports: ["127.0.0.1:${KIBANA_PORT:-15601}:5601"]
+    ports: ["${KIBANA_BIND_HOST:-127.0.0.1}:${KIBANA_PORT:-15601}:5601"]
     depends_on:
       es-setup: { condition: service_completed_successfully }
     networks: [backend]
